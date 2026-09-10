@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useFieldArray, useForm } from 'react-hook-form'
+import { useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Plus, Trash2 } from 'lucide-react'
@@ -52,7 +52,6 @@ export function PdvPagamentoForm({ subtotal, onConfirmado }: Props) {
     register,
     control,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<PagamentoFormValues>({
     resolver: zodResolver(PagamentoFormSchema),
@@ -64,8 +63,8 @@ export function PdvPagamentoForm({ subtotal, onConfirmado }: Props) {
   })
 
   const { fields, append, remove } = useFieldArray({ control, name: 'pagamentos' })
-  const pagamentosAtuais = watch('pagamentos')
-  const desconto = watch('desconto')
+  const pagamentosAtuais = useWatch({ control, name: 'pagamentos' })
+  const desconto = useWatch({ control, name: 'desconto' })
 
   const totalComDesconto = useMemo(() => Math.max(0, subtotal - Number(desconto || 0)), [subtotal, desconto])
   const somaPagamentos = useMemo(

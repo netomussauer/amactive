@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AuthGuard } from './AuthGuard'
 import { useAuth } from '@/shared/hooks/useAuth'
@@ -56,7 +56,9 @@ describe('AuthGuard', () => {
     renderWithGuard('/dashboard')
     expect(screen.getByText('Conteúdo protegido')).toBeInTheDocument()
 
-    window.dispatchEvent(new CustomEvent('amactive:unauthorized'))
+    act(() => {
+      window.dispatchEvent(new CustomEvent('amactive:unauthorized'))
+    })
 
     expect(screen.getByText('Tela de login')).toBeInTheDocument()
   })
