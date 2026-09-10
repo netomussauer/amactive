@@ -25,6 +25,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Importa o app inteiro (não só os módulos usados por cada arquivo de teste)
+# para garantir que os modelos ORM de TODOS os contextos sejam registrados em
+# `Base.metadata` antes de qualquer flush. Sem isso, o topological sort de
+# tabelas do SQLAlchemy (usado para ordenar INSERTs entre tabelas com FK)
+# falha ao resolver colunas como `movimentacao_estoque.fornecedor_id` quando
+# um arquivo de teste isolado nunca importa `FornecedorModel` — algo que não
+# acontece na aplicação real porque `main.py` importa todos os routers (e,
+# transitivamente, todos os modelos) na inicialização.
+import amactive.main  # noqa: F401
 from amactive.contexts.catalogo_estoque.domain.entities import (
     MotivoMovimentacao,
     ProdutoVariante,
@@ -71,7 +80,7 @@ async def _aplicar_migrations() -> None:
         await conn.close()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     await _garantir_banco_de_teste()
     await _aplicar_migrations()

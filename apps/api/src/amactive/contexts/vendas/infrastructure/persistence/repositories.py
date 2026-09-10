@@ -74,6 +74,7 @@ class SqlAlchemyPedidoRepository:
             cancelado_em=None,
         )
         self._session.add(pedido_modelo)
+        await self._session.flush()
 
         itens_entidade: list[ItemPedido] = []
         for item in itens:

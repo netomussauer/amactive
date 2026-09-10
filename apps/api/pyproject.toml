@@ -51,6 +51,13 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# Testes de integração dependem de um AsyncEngine `session`-scoped (ver
+# tests/integration/conftest.py); sem isso, cada teste roda em um novo event
+# loop por padrão e o asyncpg quebra ao reusar conexões de um loop diferente
+# daquele em que o engine foi criado ("cannot perform operation: another
+# operation is in progress").
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 markers = [
     "unit: testes unitarios, sem I/O (mocks/fakes) — sempre executados",
     "integration: testes de integracao, exigem Postgres acessivel via TEST_DATABASE_URL",
