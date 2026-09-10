@@ -13,6 +13,16 @@ CREATE TYPE papel_usuario       AS ENUM ('ADMIN', 'VENDEDOR', 'ESTOQUISTA');
 CREATE TYPE tipo_movimentacao   AS ENUM ('ENTRADA', 'SAIDA', 'AJUSTE');
 CREATE TYPE status_pedido       AS ENUM ('PENDENTE', 'CONFIRMADO', 'CANCELADO');
 CREATE TYPE forma_pagamento     AS ENUM ('DINHEIRO', 'PIX', 'CARTAO_DEBITO', 'CARTAO_CREDITO');
+CREATE TYPE motivo_movimentacao AS ENUM ('COMPRA', 'VENDA', 'AJUSTE_INVENTARIO', 'DEVOLUCAO', 'PERDA');
+
+-- Função utilitária: atualiza atualizado_em automaticamente em qualquer UPDATE
+-- (evita depender da camada de aplicação lembrar de setar o campo em todo UPDATE).
+CREATE OR REPLACE FUNCTION fn_atualizar_timestamp() RETURNS trigger AS $$
+BEGIN
+    NEW.atualizado_em := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- ─────────────────────────────────────────────────────────────
 -- Identidade & Acesso
@@ -27,6 +37,10 @@ CREATE TABLE usuario (
     criado_em       timestamptz NOT NULL DEFAULT now(),
     atualizado_em   timestamptz
 );
+
+CREATE TRIGGER trg_usuario_atualizado
+    BEFORE UPDATE ON usuario
+    FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
 
 -- ─────────────────────────────────────────────────────────────
 -- Cadastros (Master Data)
@@ -46,6 +60,10 @@ CREATE TABLE cliente (
     atualizado_em        timestamptz
 );
 
+CREATE TRIGGER trg_cliente_atualizado
+    BEFORE UPDATE ON cliente
+    FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
 CREATE TABLE fornecedor (
     id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     razao_social         varchar(150) NOT NULL,
@@ -61,6 +79,10 @@ CREATE TABLE fornecedor (
     criado_em            timestamptz NOT NULL DEFAULT now(),
     atualizado_em        timestamptz
 );
+
+CREATE TRIGGER trg_fornecedor_atualizado
+    BEFORE UPDATE ON fornecedor
+    FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
 
 -- ─────────────────────────────────────────────────────────────
 -- Catálogo & Estoque
@@ -85,8 +107,14 @@ CREATE TABLE produto (
     deletado_em    timestamptz
 );
 
-CREATE INDEX idx_produto_nome_trgm ON produto USING gin (nome gin_trgm_ops);
-CREATE INDEX idx_produto_categoria ON produto(categoria_id);
+-- Índices parciais: excluem produtos soft-deleted (deletado_em) do alvo de
+-- busca/listagem, que é o caso de uso dominante (catálogo ativo/consultável).
+CREATE INDEX idx_produto_nome_trgm ON produto USING gin (nome gin_trgm_ops) WHERE deletado_em IS NULL;
+CREATE INDEX idx_produto_categoria ON produto(categoria_id) WHERE deletado_em IS NULL;
+
+CREATE TRIGGER trg_produto_atualizado
+    BEFORE UPDATE ON produto
+    FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
 
 CREATE TABLE produto_variante (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -103,6 +131,10 @@ CREATE TABLE produto_variante (
 
 CREATE INDEX idx_variante_produto ON produto_variante(produto_id);
 
+CREATE TRIGGER trg_variante_atualizada
+    BEFORE UPDATE ON produto_variante
+    FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
 CREATE TABLE estoque (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     variante_id    uuid NOT NULL UNIQUE REFERENCES produto_variante(id) ON DELETE CASCADE,
@@ -113,23 +145,110 @@ CREATE TABLE estoque (
 
 CREATE INDEX idx_estoque_baixo ON estoque(variante_id) WHERE quantidade <= estoque_minimo;
 
+-- ─────────────────────────────────────────────────────────────
+-- Invariante "toda variante possui saldo de estoque" garantida no banco:
+-- ao criar uma variante, o saldo zerado é criado atomicamente na mesma
+-- transação — nunca depende da camada de aplicação lembrar de inserir a
+-- linha em `estoque` separadamente (ver docs/openapi.yaml POST
+-- /produtos/{id}/variantes: "estoque inicial zerado é criado automaticamente").
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION fn_criar_estoque_inicial() RETURNS trigger AS $$
+BEGIN
+    INSERT INTO estoque (variante_id) VALUES (NEW.id);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_variante_cria_estoque
+    AFTER INSERT ON produto_variante
+    FOR EACH ROW EXECUTE FUNCTION fn_criar_estoque_inicial();
+
 CREATE TABLE movimentacao_estoque (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     variante_id    uuid NOT NULL REFERENCES produto_variante(id) ON DELETE RESTRICT,
     tipo           tipo_movimentacao NOT NULL,
-    quantidade     integer NOT NULL CHECK (quantidade <> 0),
-    motivo         varchar(50) NOT NULL,   -- COMPRA|VENDA|AJUSTE_INVENTARIO|DEVOLUCAO|PERDA
+    quantidade     integer NOT NULL,
+    motivo         motivo_movimentacao NOT NULL,
     pedido_id      uuid,                   -- FK adicionada após criação de "pedido" (ver abaixo)
     fornecedor_id  uuid REFERENCES fornecedor(id) ON DELETE SET NULL,
     usuario_id     uuid NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
-    criado_em      timestamptz NOT NULL DEFAULT now()
+    criado_em      timestamptz NOT NULL DEFAULT now(),
+    -- ENTRADA/SAIDA sempre representam magnitude positiva (sinal implícito
+    -- no tipo); AJUSTE pode ser positivo (sobra de inventário) ou negativo
+    -- (falta), nunca zero.
+    CONSTRAINT chk_movimentacao_sinal CHECK (
+        (tipo IN ('ENTRADA', 'SAIDA') AND quantidade > 0)
+        OR (tipo = 'AJUSTE' AND quantidade <> 0)
+    ),
+    -- Toda saída por venda precisa manter rastreabilidade do pedido que a
+    -- originou (auditoria — nunca uma SAIDA de motivo=VENDA órfã de pedido).
+    CONSTRAINT chk_movimentacao_venda_tem_pedido CHECK (
+        motivo <> 'VENDA' OR pedido_id IS NOT NULL
+    )
 );
 
 CREATE INDEX idx_movimentacao_variante ON movimentacao_estoque(variante_id, criado_em DESC);
 
 -- ─────────────────────────────────────────────────────────────
+-- Estratégia de concorrência para a baixa (e reposição) de estoque
+-- Ver docs/data-model.md § "Estratégia de Concorrência — Baixa de Estoque"
+-- para a explicação completa e a orientação de uso pela camada de aplicação.
+--
+-- Regra de ouro para a aplicação: NUNCA fazer UPDATE direto em
+-- estoque.quantidade. Toda alteração de saldo é sempre um INSERT em
+-- movimentacao_estoque; este trigger aplica o delta de forma atômica,
+-- concentrando no banco (não na aplicação) a garantia de que o estoque
+-- nunca fica negativo sob concorrência.
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION fn_aplicar_movimentacao_estoque() RETURNS trigger AS $$
+DECLARE
+    v_delta  integer;
+    v_linhas integer;
+BEGIN
+    v_delta := CASE NEW.tipo
+        WHEN 'ENTRADA' THEN NEW.quantidade
+        WHEN 'SAIDA'   THEN -NEW.quantidade
+        WHEN 'AJUSTE'  THEN NEW.quantidade
+    END;
+
+    -- UPDATE atômico: a própria instrução adquire o lock de linha, valida
+    -- saldo suficiente e aplica o delta em um único round-trip — elimina a
+    -- janela de corrida de um SELECT-then-UPDATE, funcionando corretamente
+    -- mesmo sob o isolamento padrão READ COMMITTED (não exige SERIALIZABLE).
+    UPDATE estoque
+       SET quantidade    = quantidade + v_delta,
+           atualizado_em = now()
+     WHERE variante_id = NEW.variante_id
+       AND quantidade + v_delta >= 0;
+
+    GET DIAGNOSTICS v_linhas = ROW_COUNT;
+
+    IF v_linhas = 0 THEN
+        RAISE EXCEPTION 'estoque_insuficiente: variante % nao possui saldo para movimentacao de % unidade(s) (tipo %)',
+            NEW.variante_id, NEW.quantidade, NEW.tipo
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_movimentacao_atualiza_estoque
+    AFTER INSERT ON movimentacao_estoque
+    FOR EACH ROW EXECUTE FUNCTION fn_aplicar_movimentacao_estoque();
+
+-- ─────────────────────────────────────────────────────────────
 -- Vendas
 -- ─────────────────────────────────────────────────────────────
+
+-- Geração atômica e concorrency-safe do número sequencial legível do
+-- pedido (ex: PED-000123). nextval() é intrinsecamente livre de corrida
+-- no Postgres (não sofre do mesmo risco que a baixa de estoque), então
+-- não requer lock adicional na camada de aplicação. Uso recomendado
+-- dentro da mesma transação de criação do pedido:
+--   numero := 'PED-' || lpad(nextval('pedido_numero_seq')::text, 6, '0');
+CREATE SEQUENCE pedido_numero_seq AS bigint START WITH 1 INCREMENT BY 1;
+
 CREATE TABLE pedido (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     numero         varchar(20) NOT NULL UNIQUE,
@@ -146,7 +265,10 @@ CREATE TABLE pedido (
 );
 
 CREATE INDEX idx_pedido_status_criado ON pedido(status, criado_em DESC);
-CREATE INDEX idx_pedido_cliente ON pedido(cliente_id);
+-- Listagem de pedidos por cliente + período (GET /pedidos?cliente_id=&data_inicio=&data_fim=).
+-- Parcial: pedidos de venda avulsa (cliente_id IS NULL) nunca são filtrados
+-- por este padrão de acesso, então ficam fora do índice (menor, mais eficiente).
+CREATE INDEX idx_pedido_cliente_criado ON pedido(cliente_id, criado_em DESC) WHERE cliente_id IS NOT NULL;
 
 -- FK tardia de movimentacao_estoque.pedido_id (pedido é criado depois na ordem do arquivo)
 ALTER TABLE movimentacao_estoque
