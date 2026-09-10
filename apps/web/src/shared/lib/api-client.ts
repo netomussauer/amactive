@@ -2,7 +2,7 @@
 // nunca use fetch() diretamente em componentes ou hooks de feature.
 // Ver docs/frontend-architecture.md §5.1.
 
-const BASE_URL = import.meta.env.VITE_API_URL as string
+const BASE_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
 const TOKEN_STORAGE_KEY = 'amactive.token'
 
@@ -41,6 +41,14 @@ export async function apiClient<T>(path: string, options?: RequestInit): Promise
   if (!res.ok) {
     // RFC 7807 Problem Details — ver docs/openapi.yaml components.schemas.ProblemDetails
     const problem = await res.json().catch(() => ({}))
+
+    // Sessão expirada/token inválido em uma chamada autenticada — notifica o
+    // AuthGuard (via evento global) para derrubar a sessão e redirecionar ao
+    // login. Não dispara para a própria chamada de /auth/login (sem token).
+    if (res.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent('amactive:unauthorized'))
+    }
+
     throw new ApiError(problem.title ?? 'Erro inesperado', res.status, problem.detail)
   }
 
