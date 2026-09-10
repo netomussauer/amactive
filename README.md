@@ -50,7 +50,7 @@ docker compose up --build
 - API: http://localhost:8000 (docs interativas em `/docs`, métricas em `/metrics`, health check em `/health`)
 - Postgres: `localhost:5432` (usuário/senha/banco: `amactive`)
 
-Aplique as migrations iniciais (schema em `migrations/000001_initial_schema.up.sql`) com a ferramenta de migração definida pelo `data-expert` (ex: `golang-migrate` apontando para `DATABASE_URL`).
+O container da API aplica automaticamente as migrations pendentes (`migrations/*.up.sql`, incluindo o seed de desenvolvimento) antes de subir — ver `apps/api/src/amactive/scripts/apply_migrations.py` e `apps/api/docker-entrypoint.sh`. Login de desenvolvimento: `admin@amactive.dev` / `amactive123`.
 
 ### Frontend (fora do Docker, nesta fase do MVP)
 
@@ -65,9 +65,8 @@ npm run dev
 
 ## Status do Projeto
 
-Fase atual: **arquitetura e scaffold**. Estrutura de pastas, contratos (`openapi.yaml`) e modelo de dados estão definidos; regras de negócio e telas ainda **não** foram implementadas.
+Backend (`apps/api`) implementado: Catálogo & Estoque, Vendas (incluindo a baixa de estoque atômica via trigger de banco), Cadastros e Relatórios estão funcionais end-to-end contra `docs/openapi.yaml`. Identidade & Acesso é um login JWT mínimo (ver TODOs em `apps/api/src/amactive/core/security.py`). Ver `apps/api/README.md` para como rodar e testar.
 
 Próximos passos:
-1. `data-expert` — validar/ajustar o schema físico definitivo a partir de `docs/data-model.md` e das migrations iniciais em `migrations/`.
-2. `dev-expert-fullcycle` — implementar os casos de uso e endpoints de cada bounded context (`apps/api/src/amactive/contexts/*`) seguindo `docs/openapi.yaml`.
-3. `dev-expert-front` — implementar as telas do MVP em `apps/web/src/features/*` seguindo `docs/frontend-architecture.md`.
+1. `dev-expert-front` — implementar as telas do MVP em `apps/web/src/features/*` seguindo `docs/frontend-architecture.md`, consumindo a API já implementada.
+2. RBAC por papel (ADMIN/VENDEDOR/ESTOQUISTA) no backend, hoje apenas autenticação (qualquer usuário logado acessa qualquer endpoint protegido).

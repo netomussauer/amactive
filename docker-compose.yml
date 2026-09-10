@@ -30,6 +30,7 @@ services:
       - "8000:8000"
     volumes:
       - ./apps/api/src:/app/src
+      - ./migrations:/app/migrations:ro
     depends_on:
       db:
         condition: service_healthy

@@ -1,14 +1,28 @@
 """Ponto de entrada da aplicação FastAPI (camada de Frameworks).
 
-Scaffold mínimo: expõe /health e prepara o app para o registro dos routers
-de cada bounded context (a cargo do dev-expert-fullcycle). Nenhuma regra de
-negócio vive aqui — ver docs/SDD.md §1.4 (Clean Architecture por contexto).
+Registra os routers de cada bounded context, os exception handlers globais
+(RFC 7807 — ver docs/SDD.md §3.2) e o health check. Nenhuma regra de negócio
+vive aqui — ver docs/SDD.md §1.4 (Clean Architecture por contexto).
 """
 
-from fastapi import FastAPI
-from prometheus_fastapi_instrumentator import Instrumentator
+from __future__ import annotations
 
+from fastapi import FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from sqlalchemy import text
+
+from amactive.contexts.cadastros.infrastructure.api.router import router as cadastros_router
+from amactive.contexts.catalogo_estoque.infrastructure.api.router import (
+    router as catalogo_estoque_router,
+)
+from amactive.contexts.identidade.infrastructure.api.router import router as identidade_router
+from amactive.contexts.relatorios.infrastructure.api.router import router as relatorios_router
+from amactive.contexts.vendas.infrastructure.api.router import router as vendas_router
 from amactive.core.config import settings
+from amactive.shared_kernel.database import engine
+from amactive.shared_kernel.exceptions import DomainError
 
 app = FastAPI(
     title=settings.app_name,
@@ -18,11 +32,73 @@ app = FastAPI(
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
-# Routers de cada bounded context serão registrados aqui, ex:
-# from amactive.contexts.catalogo_estoque.infrastructure.api.router import router as catalogo_router
-# app.include_router(catalogo_router, prefix="/produtos", tags=["Produtos"])
+
+def _problem_details(
+    *, status_code: int, title: str, type_slug: str, detail: str, instance: str
+) -> dict[str, object]:
+    return {
+        "type": f"https://amactive.dev/errors/{type_slug}",
+        "title": title,
+        "status": status_code,
+        "detail": detail,
+        "instance": instance,
+    }
+
+
+@app.exception_handler(DomainError)
+async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
+    """Traduz qualquer exceção de domínio (de qualquer contexto) para o
+    formato RFC 7807 Problem Details definido em docs/SDD.md §3.2 /
+    docs/openapi.yaml `ProblemDetails`."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_problem_details(
+            status_code=exc.status_code,
+            title=exc.title,
+            type_slug=exc.type_slug,
+            detail=str(exc),
+            instance=request.url.path,
+        ),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Garante que erros de validação do Pydantic (422 nativo do FastAPI)
+    também sigam o contrato ProblemDetails, em vez do formato padrão do
+    FastAPI."""
+    detail = "; ".join(
+        f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in exc.errors()
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_problem_details(
+            status_code=422,
+            title="Dados de entrada inválidos",
+            type_slug="erro-validacao",
+            detail=detail or "Payload inválido.",
+            instance=request.url.path,
+        ),
+    )
+
+
+app.include_router(identidade_router)
+app.include_router(catalogo_estoque_router)
+app.include_router(vendas_router)
+app.include_router(cadastros_router)
+app.include_router(relatorios_router)
 
 
 @app.get("/health", tags=["Infra"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": settings.app_name}
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:  # noqa: BLE001 — health check nunca deve vazar detalhes internos
+        db_status = "erro"
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "service": settings.app_name,
+        "database": db_status,
+    }
