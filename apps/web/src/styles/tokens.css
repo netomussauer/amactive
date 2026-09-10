@@ -1,0 +1,84 @@
+/*
+ * AMACTIVE — Design Tokens
+ * Fonte da verdade visual. Ver docs/frontend-architecture.md §7 para a
+ * justificativa da paleta e as regras de uso (nunca hex direto em
+ * componentes — sempre via classes Tailwind mapeadas a estas variáveis).
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ── Primitivos ─────────────────────────────────────────── */
+  --color-coral-50:   #fff1ee;
+  --color-coral-400:  #ff8a70;
+  --color-coral-500:  #ff6b4a;   /* cor de assinatura AMACTIVE */
+  --color-coral-600:  #e6502f;
+  --color-coral-700:  #c23f22;
+
+  --color-graphite-50:  #f7f7f8;
+  --color-graphite-200: #e2e2e6;
+  --color-graphite-500: #6b6b74;
+  --color-graphite-800: #232328;
+  --color-graphite-900: #131316;
+
+  --color-green-500: #22c55e;
+  --color-amber-500: #f59e0b;
+  --color-red-500:   #ef4444;
+  --color-white:     #ffffff;
+
+  --font-sans: 'Sora', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+
+  --space-1: 0.25rem;  --space-2: 0.5rem;  --space-3: 0.75rem;
+  --space-4: 1rem;     --space-6: 1.5rem;  --space-8: 2rem;
+  --space-12: 3rem;    --space-16: 4rem;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 10px -2px rgb(0 0 0 / 0.10);
+
+  --breakpoint-sm: 640px;  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px; --breakpoint-xl: 1280px;
+
+  /* ── Semânticos ─────────────────────────────────────────── */
+  --color-primary:        var(--color-coral-500);
+  --color-primary-hover:  var(--color-coral-600);
+  --color-primary-subtle: var(--color-coral-50);
+
+  --color-danger:         var(--color-red-500);
+  --color-success:        var(--color-green-500);
+  --color-warning:        var(--color-amber-500);
+
+  --color-bg:             var(--color-white);
+  --color-bg-subtle:      var(--color-graphite-50);
+  --color-text:           var(--color-graphite-900);
+  --color-text-muted:     var(--color-graphite-500);
+  --color-border:         var(--color-graphite-200);
+
+  --color-status-ok:         var(--color-green-500);
+  --color-status-baixo:      var(--color-amber-500);
+  --color-status-critico:    var(--color-red-500);
+
+  --color-status-pendente:   var(--color-amber-500);
+  --color-status-confirmado: var(--color-green-500);
+  --color-status-cancelado:  var(--color-graphite-500);
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+}

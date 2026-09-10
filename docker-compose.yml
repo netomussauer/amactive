@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: amactive-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: amactive
+      POSTGRES_PASSWORD: amactive
+      POSTGRES_DB: amactive
+    ports:
+      - "5432:5432"
+    volumes:
+      - amactive_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amactive -d amactive"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+    container_name: amactive-api
+    restart: unless-stopped
+    env_file:
+      - ./apps/api/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://amactive:amactive@db:5432/amactive
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api/src:/app/src
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  amactive_db_data:
