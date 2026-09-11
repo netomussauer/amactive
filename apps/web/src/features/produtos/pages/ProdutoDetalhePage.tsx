@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { PageWrapper } from '@/shared/components/layout/PageWrapper'
 import { Badge } from '@/shared/components/ui/Badge'
 import { Button } from '@/shared/components/ui/Button'
 import { Card, CardHeader, CardTitle } from '@/shared/components/ui/Card'
 import { Modal } from '@/shared/components/ui/Modal'
+import { Stepper } from '@/shared/components/ui/Stepper'
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/shared/components/ui/Table'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { Spinner } from '@/shared/components/ui/Spinner'
@@ -18,12 +19,21 @@ import { useProduto } from '../hooks/useProduto'
 import { useAtualizarProduto } from '../hooks/useAtualizarProduto'
 import { useCriarVariante } from '../hooks/useCriarVariante'
 import { useInativarVariante } from '../hooks/useInativarVariante'
+import { CADASTRO_PRODUTO_STEPS } from '../lib/cadastro-produto-steps'
+
+type LocationState = { fromCadastro?: boolean } | null | undefined
 
 // Detalhe do produto: dados cadastrais + variantes (SKUs).
 export function ProdutoDetalhePage() {
   const { produtoId } = useParams<{ produtoId: string }>()
+  const location = useLocation()
   const [isEditing, setIsEditing] = useState(false)
   const [isVarianteModalOpen, setIsVarianteModalOpen] = useState(false)
+
+  // O Stepper (passo 3, "Imagens") só aparece aqui quando o usuário chega
+  // vindo do fluxo de criação de produto (ProdutoNovoPage passa esse state
+  // na navegação) — nunca ao abrir o detalhe de um produto já existente.
+  const vindoDoCadastro = Boolean((location.state as LocationState)?.fromCadastro)
 
   const { data: produto, isLoading } = useProduto(produtoId)
   const { mutate: atualizarProduto, isPending: isUpdating } = useAtualizarProduto(produtoId ?? '')
@@ -137,6 +147,13 @@ export function ProdutoDetalhePage() {
             </Table>
           )}
         </Card>
+
+        {vindoDoCadastro && (
+          <Card>
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-text-muted">Cadastro em andamento</p>
+            <Stepper steps={CADASTRO_PRODUTO_STEPS} currentStepId="imagens" />
+          </Card>
+        )}
 
         <GaleriaImagensProduto
           produtoId={produto.id}

@@ -29,10 +29,8 @@ vi.mock('../hooks/useCriarVariantesEmLote', () => ({
 }))
 
 async function gerarMatrizComDuasCores(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText(/cores/i), 'Coral')
-  await user.click(screen.getByRole('button', { name: /adicionar cor/i }))
-  await user.type(screen.getByLabelText(/cores/i), 'Preto')
-  await user.click(screen.getByRole('button', { name: /adicionar cor/i }))
+  await user.click(screen.getByRole('button', { name: 'Coral' }))
+  await user.click(screen.getByRole('button', { name: 'Preto' }))
 
   await user.click(screen.getByRole('button', { name: 'M' }))
 

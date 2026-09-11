@@ -6,6 +6,7 @@ import { FormField } from '@/shared/components/ui/FormField'
 import { Badge } from '@/shared/components/ui/Badge'
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/shared/components/ui/Table'
 import { cn } from '@/shared/lib/utils'
+import { PaletaDeCores } from './PaletaDeCores'
 import {
   atualizarCombo,
   gerarMatrizVariantes,
@@ -34,7 +35,6 @@ type StatusLinha = ResultadoCombo | 'pendente' | undefined
 // de cada uma sem bloquear as que deram certo.
 export function MatrizVariantesForm({ produtoId, nomeProduto, onConcluido, onPular }: Props) {
   const [cores, setCores] = useState<string[]>([])
-  const [corInput, setCorInput] = useState('')
   const [tamanhos, setTamanhos] = useState<string[]>([])
   const [tamanhoInput, setTamanhoInput] = useState('')
   const [precoVendaBase, setPrecoVendaBase] = useState('')
@@ -46,21 +46,6 @@ export function MatrizVariantesForm({ produtoId, nomeProduto, onConcluido, onPul
   const [statusPorId, setStatusPorId] = useState<Record<string, StatusLinha>>({})
 
   const { mutate: criarVariantes, isPending } = useCriarVariantesEmLote(produtoId)
-
-  function handleAddCor() {
-    const valor = corInput.trim()
-    if (!valor) return
-    if (cores.some((c) => c.toLowerCase() === valor.toLowerCase())) {
-      setCorInput('')
-      return
-    }
-    setCores((prev) => [...prev, valor])
-    setCorInput('')
-  }
-
-  function handleRemoveCor(cor: string) {
-    setCores((prev) => prev.filter((c) => c !== cor))
-  }
 
   function toggleTamanhoSugerido(tamanho: string) {
     setTamanhos((prev) =>
@@ -157,43 +142,18 @@ export function MatrizVariantesForm({ produtoId, nomeProduto, onConcluido, onPul
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField label="Cores" htmlFor="matriz-cor-input" hint="Adicione uma cor por vez e pressione Enter">
-          <div className="flex gap-2">
-            <Input
-              id="matriz-cor-input"
-              placeholder="Coral"
-              value={corInput}
-              onChange={(event) => setCorInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleAddCor()
-                }
-              }}
-            />
-            <Button type="button" variant="outline" size="icon" aria-label="Adicionar cor" onClick={handleAddCor}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </div>
-          {cores.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {cores.map((cor) => (
-                <li key={cor}>
-                  <Badge tone="primary" className="gap-1.5">
-                    {cor}
-                    <button
-                      type="button"
-                      aria-label={`Remover cor ${cor}`}
-                      onClick={() => handleRemoveCor(cor)}
-                      className="rounded-full hover:opacity-70"
-                    >
-                      <X className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
+        <FormField
+          label="Cores"
+          htmlFor="matriz-cores"
+          hint="Clique nos quadrados para selecionar uma ou mais cores, ou use 'Personalizada'"
+        >
+          <PaletaDeCores
+            idPrefix="matriz-cores"
+            ariaLabel="Cores"
+            multiple
+            value={cores}
+            onChange={setCores}
+          />
         </FormField>
 
         <FormField label="Tamanhos" htmlFor="matriz-tamanho-input" hint="Clique nas sugestões ou digite um tamanho numérico">

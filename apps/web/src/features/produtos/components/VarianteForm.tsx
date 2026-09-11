@@ -1,8 +1,9 @@
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/shared/components/ui/Button'
 import { Input } from '@/shared/components/ui/Input'
 import { FormField } from '@/shared/components/ui/FormField'
+import { PaletaDeCores } from './PaletaDeCores'
 import { CriarVarianteSchema, type CriarVarianteDTO } from '../schemas/produto.schema'
 import { TAMANHOS_SUGERIDOS } from '../lib/matriz-variantes'
 
@@ -14,6 +15,7 @@ type Props = {
 export function VarianteForm({ onSubmit, isSubmitting }: Props) {
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CriarVarianteDTO>({
@@ -46,8 +48,20 @@ export function VarianteForm({ onSubmit, isSubmitting }: Props) {
           </datalist>
         </FormField>
 
-        <FormField label="Cor" htmlFor="cor" required error={errors.cor?.message}>
-          <Input id="cor" placeholder="Coral" invalid={Boolean(errors.cor)} {...register('cor')} />
+        <FormField label="Cor" htmlFor="variante-cor" required error={errors.cor?.message}>
+          <Controller
+            name="cor"
+            control={control}
+            render={({ field }) => (
+              <PaletaDeCores
+                idPrefix="variante-cor"
+                ariaLabel="Cor"
+                multiple={false}
+                value={field.value ? [field.value] : []}
+                onChange={(value) => field.onChange(value[0] ?? '')}
+              />
+            )}
+          />
         </FormField>
       </div>
 
