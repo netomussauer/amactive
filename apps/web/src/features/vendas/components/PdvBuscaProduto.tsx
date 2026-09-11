@@ -4,11 +4,12 @@ import { Input } from '@/shared/components/ui/Input'
 import { Button } from '@/shared/components/ui/Button'
 import { Badge } from '@/shared/components/ui/Badge'
 import { Spinner } from '@/shared/components/ui/Spinner'
+import { PrecoPromocional } from '@/shared/components/ui/PrecoPromocional'
 import { useDebounce } from '@/shared/hooks/useDebounce'
 import { cn } from '@/shared/lib/utils'
-import { formatCurrencyBRL } from '@/shared/lib/format'
 import { useProdutoPorSku, useProdutos, useVariantesDoProduto } from '@/features/produtos'
 import { useCarrinhoStore } from '../store/carrinho.store'
+import { calcularDescontoItem } from '../lib/calcular-desconto-item'
 import type { CarrinhoItem } from '../types/pedido.types'
 
 type Modo = 'sku' | 'nome'
@@ -31,8 +32,10 @@ function SkuResult() {
       cor: resultado.variante.cor,
       precoUnitario: resultado.variante.preco_venda,
       quantidade: 1,
-      descontoItem: '0.00',
+      descontoItem: calcularDescontoItem(resultado.variante.preco_venda, resultado.variante.preco_promocional, 1),
       estoqueDisponivel: resultado.variante.quantidade_estoque,
+      precoPromocional: resultado.variante.preco_promocional,
+      descontoPercentual: resultado.variante.desconto_percentual,
     }
     addItem(item)
     setSku('')
@@ -72,8 +75,13 @@ function SkuResult() {
             <p className="font-medium text-text">
               {resultado.produtoNome} — {resultado.variante.tamanho}/{resultado.variante.cor}
             </p>
-            <p className="text-sm text-text-muted">
-              SKU {resultado.variante.sku} · {formatCurrencyBRL(resultado.variante.preco_venda)}
+            <p className="flex flex-wrap items-center gap-1 text-sm text-text-muted">
+              SKU {resultado.variante.sku} ·{' '}
+              <PrecoPromocional
+                precoOriginal={resultado.variante.preco_venda}
+                precoPromocional={resultado.variante.preco_promocional}
+                descontoPercentual={resultado.variante.desconto_percentual}
+              />
             </p>
             {semEstoque ? (
               <Badge tone="critico" className="mt-1">
@@ -114,8 +122,13 @@ function VariantesDoProduto({ produtoId, produtoNome }: { produtoId: string; pro
         return (
           <li key={variante.id} className="flex items-center justify-between gap-3 py-2">
             <div>
-              <p className="text-sm font-medium text-text">
-                {variante.tamanho}/{variante.cor} · {formatCurrencyBRL(variante.preco_venda)}
+              <p className="flex flex-wrap items-center gap-1 text-sm font-medium text-text">
+                {variante.tamanho}/{variante.cor} ·{' '}
+                <PrecoPromocional
+                  precoOriginal={variante.preco_venda}
+                  precoPromocional={variante.preco_promocional}
+                  descontoPercentual={variante.desconto_percentual}
+                />
               </p>
               <p className="text-xs text-text-muted">
                 SKU {variante.sku} · {semEstoque ? 'sem estoque' : `${variante.quantidade_estoque} em estoque`}
@@ -135,8 +148,10 @@ function VariantesDoProduto({ produtoId, produtoNome }: { produtoId: string; pro
                   cor: variante.cor,
                   precoUnitario: variante.preco_venda,
                   quantidade: 1,
-                  descontoItem: '0.00',
+                  descontoItem: calcularDescontoItem(variante.preco_venda, variante.preco_promocional, 1),
                   estoqueDisponivel: variante.quantidade_estoque,
+                  precoPromocional: variante.preco_promocional,
+                  descontoPercentual: variante.desconto_percentual,
                 })
               }
             >

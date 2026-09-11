@@ -63,6 +63,79 @@ describe('carrinho.store', () => {
     expect(useCarrinhoStore.getState().itens[0].quantidade).toBe(3)
   })
 
+  it('calcula o desconto proporcionalmente ao somar quantidade de um item com preço promocional', () => {
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 1,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '15.00',
+        estoqueDisponivel: 10,
+      }),
+    )
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 2,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '30.00',
+        estoqueDisponivel: 10,
+      }),
+    )
+
+    const item = useCarrinhoStore.getState().itens[0]
+    expect(item.quantidade).toBe(3)
+    expect(item.descontoItem).toBe('45.00')
+  })
+
+  it('recalcula o desconto ao aumentar a quantidade de um item com preço promocional', () => {
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 1,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '15.00',
+        estoqueDisponivel: 10,
+      }),
+    )
+
+    useCarrinhoStore.getState().updateQuantidade('variante-1', 4)
+
+    const item = useCarrinhoStore.getState().itens[0]
+    expect(item.quantidade).toBe(4)
+    expect(item.descontoItem).toBe('60.00')
+  })
+
+  it('recalcula o desconto ao diminuir a quantidade de um item com preço promocional', () => {
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 4,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '60.00',
+        estoqueDisponivel: 10,
+      }),
+    )
+
+    useCarrinhoStore.getState().updateQuantidade('variante-1', 2)
+
+    const item = useCarrinhoStore.getState().itens[0]
+    expect(item.quantidade).toBe(2)
+    expect(item.descontoItem).toBe('30.00')
+  })
+
+  it('mantém desconto "0.00" ao atualizar quantidade de item sem promoção', () => {
+    useCarrinhoStore.getState().addItem(makeItem({ quantidade: 1, estoqueDisponivel: 10 }))
+
+    useCarrinhoStore.getState().updateQuantidade('variante-1', 5)
+
+    expect(useCarrinhoStore.getState().itens[0].descontoItem).toBe('0.00')
+  })
+
   it('limpa o carrinho, cliente e observação', () => {
     useCarrinhoStore.getState().addItem(makeItem())
     useCarrinhoStore.getState().setClienteId('cliente-1')

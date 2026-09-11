@@ -4,7 +4,8 @@ import { Button } from '@/shared/components/ui/Button'
 import { Input } from '@/shared/components/ui/Input'
 import { FormField } from '@/shared/components/ui/FormField'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
-import { formatCurrencyBRL } from '@/shared/lib/format'
+import { Badge } from '@/shared/components/ui/Badge'
+import { formatCurrencyBRL, formatPercent } from '@/shared/lib/format'
 import { useDebounce } from '@/shared/hooks/useDebounce'
 import { useClientes } from '@/features/clientes'
 import { useCarrinhoStore } from '../store/carrinho.store'
@@ -48,9 +49,22 @@ export function PdvCarrinho() {
               <p className="truncate font-medium text-text">
                 {item.produtoNome} — {item.tamanho}/{item.cor}
               </p>
-              <p className="text-xs text-text-muted">
-                SKU {item.sku} · {formatCurrencyBRL(item.precoUnitario)} cada
-              </p>
+              {item.precoPromocional ? (
+                <>
+                  <p className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
+                    SKU {item.sku} ·{' '}
+                    <span className="line-through">{formatCurrencyBRL(item.precoUnitario)}</span>{' '}
+                    <span className="font-medium text-primary">{formatCurrencyBRL(item.precoPromocional)}</span> cada
+                  </p>
+                  <Badge tone="primary" className="mt-1">
+                    Promoção -{formatPercent(item.descontoPercentual)}
+                  </Badge>
+                </>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  SKU {item.sku} · {formatCurrencyBRL(item.precoUnitario)} cada
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-1">

@@ -31,4 +31,10 @@ export type CarrinhoItem = {
   quantidade: number
   descontoItem: string
   estoqueDisponivel: number
+  // Preço promocional/percentual da variante no momento em que foi
+  // adicionada ao carrinho — guardados para recalcular `descontoItem`
+  // proporcionalmente quando a quantidade mudar (ver carrinho.store.ts).
+  // null/undefined = sem promoção ativa.
+  precoPromocional?: string | null
+  descontoPercentual?: string | null
 }

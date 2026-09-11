@@ -4,6 +4,17 @@ import { paginatedResponseSchema, listResponseSchema } from '@/shared/types/comm
 const decimalString = z.string().regex(/^\d+\.\d{2}$/, 'Formato inválido: use 129.90')
 
 // ── Produto ──
+// Percentual de desconto promocional (ver docs/openapi.yaml
+// CriarProdutoRequest.desconto_percentual): 0 < x <= 100, null = sem
+// promoção ativa. O <input type="number"> normaliza "" → null via
+// setValueAs no register (ver ProdutoForm) antes de chegar aqui.
+const descontoPercentualSchema = z
+  .number()
+  .gt(0, 'Desconto deve ser maior que 0%')
+  .max(100, 'Desconto deve ser no máximo 100%')
+  .nullable()
+  .optional()
+
 export const CriarProdutoSchema = z.object({
   nome: z.string().min(2, 'Informe o nome do produto').max(200),
   descricao: z.string().max(2000).optional().or(z.literal('')),
@@ -11,6 +22,7 @@ export const CriarProdutoSchema = z.object({
   // (ver ProdutoForm) antes de chegar aqui, então null é sempre um valor válido.
   categoria_id: z.string().uuid().nullable().optional(),
   marca: z.string().max(100).default('AMACTIVE'),
+  desconto_percentual: descontoPercentualSchema,
 })
 export type CriarProdutoDTO = z.infer<typeof CriarProdutoSchema>
 
@@ -25,6 +37,8 @@ export const ProdutoResponseSchema = z.object({
   descricao: z.string().nullable().optional(),
   categoria_id: z.string().nullable().optional(),
   marca: z.string(),
+  // null = sem promoção ativa (ver docs/data-model.md decisão #14).
+  desconto_percentual: z.number().nullable().optional(),
   ativo: z.boolean(),
   criado_em: z.string(),
 })
@@ -62,6 +76,12 @@ export const VarianteResponseSchema = z.object({
   preco_custo: z.string().nullable().optional(),
   ativo: z.boolean(),
   quantidade_estoque: z.number(),
+  // Repassado do produto pai — null = sem promoção ativa. O backend já
+  // calcula preco_promocional a partir de desconto_percentual (ver
+  // shared_kernel/money.aplicar_desconto_percentual); o frontend NUNCA
+  // recalcula esse valor, apenas exibe o que a API retorna.
+  desconto_percentual: z.string().nullable().optional(),
+  preco_promocional: z.string().nullable().optional(),
 })
 export type Variante = z.infer<typeof VarianteResponseSchema>
 

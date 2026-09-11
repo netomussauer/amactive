@@ -83,4 +83,40 @@ describe('PdvCarrinho', () => {
     const results = await axe(container)
     expect(results).toHaveNoViolations()
   })
+
+  it('exibe o preço riscado, o preço promocional e o badge de promoção quando o item tem desconto', () => {
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 2,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '30.00',
+      }),
+    )
+
+    render(<PdvCarrinho />)
+
+    expect(screen.getByText('R$ 100,00')).toHaveClass('line-through')
+    expect(screen.getByText('R$ 85,00')).toBeInTheDocument()
+    expect(screen.getByText('Promoção -15%')).toBeInTheDocument()
+  })
+
+  it('o subtotal do item e o total do carrinho refletem o desconto promocional aplicado', () => {
+    useCarrinhoStore.getState().addItem(
+      makeItem({
+        quantidade: 2,
+        precoUnitario: '100.00',
+        precoPromocional: '85.00',
+        descontoPercentual: '15.00',
+        descontoItem: '30.00',
+      }),
+    )
+
+    render(<PdvCarrinho />)
+
+    // Preço unitário 100 x 2 = 200, desconto 30 => subtotal do item = 170,
+    // e como é o único item, o subtotal geral do carrinho também é 170.
+    expect(screen.getAllByText('R$ 170,00')).toHaveLength(2)
+  })
 })

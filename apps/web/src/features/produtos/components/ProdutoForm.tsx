@@ -29,6 +29,7 @@ export function ProdutoForm({ defaultValues, onSubmit, isSubmitting, submitLabel
       descricao: '',
       categoria_id: null,
       marca: 'AMACTIVE',
+      desconto_percentual: null,
       ...defaultValues,
     },
   })
@@ -69,6 +70,26 @@ export function ProdutoForm({ defaultValues, onSubmit, isSubmitting, submitLabel
           </Select>
         </FormField>
       </div>
+
+      <FormField
+        label="Desconto promocional (%)"
+        htmlFor="desconto_percentual"
+        hint="Opcional — deixe em branco para não aplicar promoção"
+        error={errors.desconto_percentual?.message}
+      >
+        <Input
+          id="desconto_percentual"
+          type="number"
+          min={0.01}
+          max={100}
+          step="0.01"
+          placeholder="Ex: 15"
+          invalid={Boolean(errors.desconto_percentual)}
+          {...register('desconto_percentual', {
+            setValueAs: (value: string) => (value === '' ? null : Number(value)),
+          })}
+        />
+      </FormField>
 
       <Button type="submit" isLoading={isSubmitting} aria-busy={isSubmitting} className="w-full sm:w-auto">
         {isSubmitting ? 'Salvando...' : submitLabel}

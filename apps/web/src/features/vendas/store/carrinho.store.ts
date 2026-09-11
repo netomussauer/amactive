@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { CarrinhoItem } from '../types/pedido.types'
+import { calcularDescontoItem } from '../lib/calcular-desconto-item'
 
 type CarrinhoState = {
   itens: CarrinhoItem[]
@@ -27,7 +28,15 @@ export const useCarrinhoStore = create<CarrinhoState>((set, get) => ({
       const novaQuantidade = Math.min(existente.quantidade + item.quantidade, item.estoqueDisponivel)
       set({
         itens: get().itens.map((i) =>
-          i.varianteId === item.varianteId ? { ...i, quantidade: novaQuantidade } : i,
+          i.varianteId === item.varianteId
+            ? {
+                ...i,
+                quantidade: novaQuantidade,
+                // Recalcula o desconto proporcionalmente à nova quantidade —
+                // nunca fica travado no valor calculado na primeira adição.
+                descontoItem: calcularDescontoItem(i.precoUnitario, i.precoPromocional, novaQuantidade),
+              }
+            : i,
         ),
       })
       return
@@ -41,11 +50,15 @@ export const useCarrinhoStore = create<CarrinhoState>((set, get) => ({
 
   updateQuantidade: (varianteId, quantidade) => {
     set({
-      itens: get().itens.map((i) =>
-        i.varianteId === varianteId
-          ? { ...i, quantidade: Math.max(1, Math.min(quantidade, i.estoqueDisponivel)) }
-          : i,
-      ),
+      itens: get().itens.map((i) => {
+        if (i.varianteId !== varianteId) return i
+        const novaQuantidade = Math.max(1, Math.min(quantidade, i.estoqueDisponivel))
+        return {
+          ...i,
+          quantidade: novaQuantidade,
+          descontoItem: calcularDescontoItem(i.precoUnitario, i.precoPromocional, novaQuantidade),
+        }
+      }),
     })
   },
 

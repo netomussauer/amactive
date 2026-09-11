@@ -30,3 +30,13 @@ export function formatDateTime(value: string | null | undefined): string {
 export function toDecimalString(value: number): string {
   return value.toFixed(2)
 }
+
+// Formata um percentual (ex: variante.desconto_percentual = "15.00") para
+// exibição, sem casas decimais desnecessárias (ex: "15%", "12,5%").
+export function formatPercent(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '0%'
+  const numeric = typeof value === 'string' ? Number(value) : value
+  if (Number.isNaN(numeric)) return '0%'
+  const semZerosSobrando = Number(numeric.toFixed(2))
+  return `${semZerosSobrando.toLocaleString('pt-BR')}%`
+}

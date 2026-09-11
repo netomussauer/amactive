@@ -10,7 +10,7 @@ import { Stepper } from '@/shared/components/ui/Stepper'
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/shared/components/ui/Table'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { Spinner } from '@/shared/components/ui/Spinner'
-import { formatCurrencyBRL } from '@/shared/lib/format'
+import { PrecoPromocional } from '@/shared/components/ui/PrecoPromocional'
 import { ProdutoCard } from '../components/ProdutoCard'
 import { ProdutoForm } from '../components/ProdutoForm'
 import { VarianteForm } from '../components/VarianteForm'
@@ -78,6 +78,7 @@ export function ProdutoDetalhePage() {
                 descricao: produto.descricao ?? '',
                 categoria_id: produto.categoria_id ?? null,
                 marca: produto.marca,
+                desconto_percentual: produto.desconto_percentual ?? null,
               }}
               isSubmitting={isUpdating}
               submitLabel="Salvar alterações"
@@ -121,7 +122,13 @@ export function ProdutoDetalhePage() {
                     <TableCell className="font-mono text-xs">{variante.sku}</TableCell>
                     <TableCell>{variante.tamanho}</TableCell>
                     <TableCell>{variante.cor}</TableCell>
-                    <TableCell>{formatCurrencyBRL(variante.preco_venda)}</TableCell>
+                    <TableCell>
+                      <PrecoPromocional
+                        precoOriginal={variante.preco_venda}
+                        precoPromocional={variante.preco_promocional}
+                        descontoPercentual={variante.desconto_percentual}
+                      />
+                    </TableCell>
                     <TableCell>{variante.quantidade_estoque}</TableCell>
                     <TableCell>
                       <Badge tone={variante.ativo ? 'ok' : 'neutral'}>{variante.ativo ? 'Ativa' : 'Inativa'}</Badge>
