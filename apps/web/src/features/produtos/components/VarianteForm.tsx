@@ -4,13 +4,12 @@ import { Button } from '@/shared/components/ui/Button'
 import { Input } from '@/shared/components/ui/Input'
 import { FormField } from '@/shared/components/ui/FormField'
 import { CriarVarianteSchema, type CriarVarianteDTO } from '../schemas/produto.schema'
+import { TAMANHOS_SUGERIDOS } from '../lib/matriz-variantes'
 
 type Props = {
   onSubmit: (values: CriarVarianteDTO) => void
   isSubmitting?: boolean
 }
-
-const TAMANHOS_SUGERIDOS = ['PP', 'P', 'M', 'G', 'GG']
 
 export function VarianteForm({ onSubmit, isSubmitting }: Props) {
   const {

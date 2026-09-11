@@ -13,6 +13,7 @@ import { formatCurrencyBRL } from '@/shared/lib/format'
 import { ProdutoCard } from '../components/ProdutoCard'
 import { ProdutoForm } from '../components/ProdutoForm'
 import { VarianteForm } from '../components/VarianteForm'
+import { GaleriaImagensProduto } from '../components/GaleriaImagensProduto'
 import { useProduto } from '../hooks/useProduto'
 import { useAtualizarProduto } from '../hooks/useAtualizarProduto'
 import { useCriarVariante } from '../hooks/useCriarVariante'
@@ -136,6 +137,11 @@ export function ProdutoDetalhePage() {
             </Table>
           )}
         </Card>
+
+        <GaleriaImagensProduto
+          produtoId={produto.id}
+          coresAtivas={Array.from(new Set(produto.variantes.filter((v) => v.ativo).map((v) => v.cor)))}
+        />
       </div>
 
       <Modal open={isVarianteModalOpen} onClose={() => setIsVarianteModalOpen(false)} title="Nova variante (SKU)">
