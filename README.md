@@ -59,7 +59,9 @@ docker compose up --build
 ```
 
 - API: http://localhost:8000 (docs interativas em `/docs`, métricas em `/metrics`, health check em `/health`)
-- Postgres: `localhost:5432` (usuário/senha/banco padrão: `amactive` — sobrescrevível via um `.env` na raiz do repo com `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`, lido automaticamente pelo `docker compose`)
+- Postgres: `localhost:5433` (não 5432 — evita colidir com um Postgres local já rodando na porta padrão; a API não usa essa porta, fala com o banco pela rede interna do compose). Usuário/senha/banco padrão: `amactive`. Tudo isso (incluindo a porta) é sobrescrevível via um `.env` na raiz do repo com `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`/`DB_HOST_PORT` — copie `.env.example` da raiz se precisar mudar algo.
+
+Se `docker compose up` falhar com `address already in use` numa porta, é porque algo no host já está ouvindo nela (outro Postgres, outro projeto). Para a porta 8000 (API) ou 5433 (Postgres), descubra o que está ocupando (`netstat -ano | findstr :8000` no PowerShell) e pare o processo, ou sobrescreva a porta em conflito (`DB_HOST_PORT` no `.env` da raiz para o Postgres; para a API, ajuste o mapeamento `"8000:8000"` em `docker-compose.yml`).
 
 O container da API aplica automaticamente as migrations pendentes (`migrations/*.up.sql`, incluindo o seed de desenvolvimento) antes de subir — ver `apps/api/src/amactive/scripts/apply_migrations.py` e `apps/api/docker-entrypoint.sh`. Login de desenvolvimento (seed): `admin@amactive.dev` / `amactive123`.
 

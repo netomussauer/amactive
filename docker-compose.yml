@@ -11,7 +11,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amactive}
       POSTGRES_DB: ${POSTGRES_DB:-amactive}
     ports:
-      - "5432:5432"
+      # Porta do host configurável (default 5433, não 5432) porque é comum
+      # já haver um Postgres local ocupando 5432 (outro projeto, instalação
+      # nativa, WSL). Sobrescreva com DB_HOST_PORT no `.env` da raiz se
+      # 5433 também estiver ocupada. O container sempre expõe 5432
+      # internamente — isso não afeta `DATABASE_URL` abaixo, que fala com o
+      # serviço `db` pela rede interna do compose, nunca por esta porta.
+      - "${DB_HOST_PORT:-5433}:5432"
     volumes:
       - amactive_db_data:/var/lib/postgresql/data
     healthcheck:
