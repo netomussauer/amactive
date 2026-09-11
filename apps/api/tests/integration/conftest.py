@@ -69,13 +69,32 @@ async def _garantir_banco_de_teste() -> None:
 
 
 async def _aplicar_migrations() -> None:
+    """Aplica migrations pendentes, rastreando por arquivo (mesmo padrão de
+    `scripts/apply_migrations.py`) em vez de checar só se uma tabela
+    conhecida existe — a checagem antiga parava de aplicar qualquer coisa
+    assim que a primeira migration já tivesse rodado, então uma migration
+    nova (ex.: 000003+) nunca seria pega num banco de teste que persiste
+    entre execuções."""
     conn = await asyncpg.connect(dsn=_asyncpg_dsn(TEST_DATABASE_URL))
     try:
-        schema_existe = await conn.fetchval("SELECT to_regclass('public.produto_variante')")
-        if schema_existe is not None:
-            return
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                versao text PRIMARY KEY,
+                aplicada_em timestamptz NOT NULL DEFAULT now()
+            )
+            """
+        )
+        aplicadas = {
+            row["versao"] for row in await conn.fetch("SELECT versao FROM schema_migrations")
+        }
         for arquivo in sorted(_MIGRATIONS_DIR.glob("*.up.sql")):
+            if arquivo.name in aplicadas:
+                continue
             await conn.execute(arquivo.read_text(encoding="utf-8"))
+            await conn.execute(
+                "INSERT INTO schema_migrations (versao) VALUES ($1)", arquivo.name
+            )
     finally:
         await conn.close()
 

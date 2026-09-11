@@ -52,6 +52,16 @@ erDiagram
         timestamptz atualizado_em
     }
 
+    PRODUTO_IMAGEM {
+        uuid id PK
+        uuid produto_id FK "not null"
+        string cor "not null — vincula à cor, não à variante tamanho+cor"
+        string url "not null — caminho relativo em disco (volume Docker local)"
+        smallint ordem "default 0 — ordem de exibição na galeria da cor"
+        boolean principal "default false — no máx. 1 true por produto_id+cor"
+        timestamptz criado_em "default now()"
+    }
+
     ESTOQUE {
         uuid id PK
         uuid variante_id FK,UK "1:1 com produto_variante no MVP (single-depósito)"
@@ -138,6 +148,7 @@ erDiagram
 
     CATEGORIA ||--o{ PRODUTO : "classifica"
     PRODUTO ||--|{ PRODUTO_VARIANTE : "possui"
+    PRODUTO ||--o{ PRODUTO_IMAGEM : "exibe (galeria por cor)"
     PRODUTO_VARIANTE ||--|| ESTOQUE : "tem saldo"
     PRODUTO_VARIANTE ||--o{ MOVIMENTACAO_ESTOQUE : "movimenta"
     FORNECEDOR ||--o{ MOVIMENTACAO_ESTOQUE : "origina entrada (opcional)"
@@ -185,6 +196,8 @@ erDiagram
 
 12. **Geração do `pedido.numero` via `SEQUENCE` dedicada** (`pedido_numero_seq`) — a migration original não definia como o número sequencial legível (`PED-000123`) seria gerado sem colisão sob concorrência. `nextval()` de uma sequence é atômico e livre de corrida por construção no PostgreSQL (ao contrário da baixa de estoque, não precisa de nenhum lock explícito), então a camada de aplicação deve gerar o número assim: `'PED-' || lpad(nextval('pedido_numero_seq')::text, 6, '0')`, dentro da mesma transação de criação do pedido.
 
+13. **`produto_imagem` vincula a imagem à COR, não à `produto_variante` (tamanho+cor)** — introduzido em `migrations/000003_produto_imagem`. Uma foto de produto de moda fitness normalmente não muda por tamanho, apenas por cor (a mesma camiseta rosa fotografada uma vez serve PP, P, M, G e GG); modelar `produto_imagem.variante_id` referenciando `produto_variante` obrigaria duplicar a mesma imagem N vezes (uma por tamanho) só para satisfazer uma FK, sem nenhum ganho — e criaria inconsistência caso alguém atualizasse a imagem de um tamanho e esquecesse os demais. Por isso a FK é direto para `produto.id`, com uma coluna `cor` (`varchar(50)`, mesma convenção de texto livre de `produto_variante.cor` — deliberadamente **sem** introduzir uma tabela/enum de cores normalizada, para não generalizar além do necessário nesta fase). Como `cor` não é chave em `produto_variante`, não existe FK composta possível entre as duas tabelas; a validação de que a cor informada numa imagem corresponde a uma cor que de fato existe entre as variantes daquele produto é responsabilidade da camada de aplicação, não do banco. A regra "no máximo uma imagem principal (capa) por produto+cor" é garantida por um índice único parcial (`uq_produto_imagem_principal_por_cor ON produto_imagem(produto_id, cor) WHERE principal = true`) em vez de trigger — é uma constraint estática (não depende de lógica condicional além do próprio filtro), então o índice parcial único já é suficiente e mais simples. Armazenamento é em disco local via volume Docker nesta fase (`url` guarda um caminho relativo, ex: `/media/produtos/{produto_id}/{uuid}.jpg`), não um bucket S3 — evolução futura registrada, mas fora do escopo desta migration (trocar `url` de caminho relativo para URL absoluta de um object storage não exigiria migration destrutiva, o tipo da coluna permanece `varchar`).
+
 ### Chaves Estrangeiras — `ON DELETE`
 
 | FK | Ação | Motivo |
@@ -201,6 +214,7 @@ erDiagram
 | `item_pedido.variante_id → produto_variante.id` | `RESTRICT` | Histórico de venda nunca pode ficar órfão de produto |
 | `pagamento_pedido.pedido_id → pedido.id` | `CASCADE` | Pagamento não existe sem o pedido pai |
 | `produto.categoria_id → categoria.id` | `SET NULL` | Categoria pode ser removida/reorganizada sem apagar produtos |
+| `produto_imagem.produto_id → produto.id` | `CASCADE` | Imagem não existe sem o produto pai (mesmo padrão de `item_pedido.pedido_id`) |
 
 ### Índices Críticos
 
@@ -216,6 +230,8 @@ item_pedido(pedido_id)                         -- FK, montagem do pedido complet
 item_pedido(variante_id)                       -- relatório de produtos mais vendidos
 produto(nome) USING gin (nome gin_trgm_ops) WHERE deletado_em IS NULL   -- busca textual no catálogo ativo
 produto(categoria_id) WHERE deletado_em IS NULL           -- listagem de produtos por categoria (catálogo ativo)
+produto_imagem(produto_id, cor)                            -- galeria de imagens de uma cor do produto
+produto_imagem(produto_id, cor) WHERE principal = true     -- UNIQUE parcial, no máx. 1 capa por produto+cor
 ```
 
 > Ajuste da auditoria física: `pedido(cliente_id)` (índice simples) foi substituído por `pedido(cliente_id, criado_em DESC) WHERE cliente_id IS NOT NULL` — o padrão de acesso real (`GET /pedidos?cliente_id=&data_inicio=&data_fim=`) sempre filtra por cliente **e** ordena/filtra por período; um índice simples em `cliente_id` obrigaria um sort adicional. A cláusula parcial exclui vendas avulsas (`cliente_id IS NULL`), que nunca são alvo desse padrão de consulta, mantendo o índice menor. Os índices de `produto` também ganharam `WHERE deletado_em IS NULL`: como o catálogo consultável no dia a dia é sempre o não-deletado, isso reduz o tamanho do índice e evita que produtos descontinuados (mantidos apenas para histórico de vendas) poluam buscas e listagens ativas.
