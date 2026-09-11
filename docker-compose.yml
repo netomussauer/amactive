@@ -4,18 +4,29 @@ services:
     container_name: amactive-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: amactive
-      POSTGRES_PASSWORD: amactive
-      POSTGRES_DB: amactive
+      # Sem segredos hardcoded: credenciais parametrizadas com defaults de
+      # dev/local. Para sobrescrever, crie um `.env` na raiz do repo (lido
+      # automaticamente pelo `docker compose`) com POSTGRES_USER/PASSWORD/DB.
+      POSTGRES_USER: ${POSTGRES_USER:-amactive}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-amactive}
+      POSTGRES_DB: ${POSTGRES_DB:-amactive}
     ports:
       - "5432:5432"
     volumes:
       - amactive_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U amactive -d amactive"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-amactive} -d ${POSTGRES_DB:-amactive}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    # Limites de recurso (perfil "banco de dados" reduzido para ambiente de
+    # teste local — em produção real este serviço não roda em Compose, ver
+    # docs/SDD.md ADRs de infra). Usa mem_limit/cpus (não deploy.resources)
+    # porque `docker compose up` comum, sem Swarm nem --compatibility,
+    # ignora silenciosamente o bloco `deploy`.
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: "1.0"
 
   api:
     build:
@@ -25,7 +36,11 @@ services:
     env_file:
       - ./apps/api/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://amactive:amactive@db:5432/amactive
+      # Override explícito e proposital: independentemente do que estiver em
+      # apps/api/.env (que pode ser usado também para rodar a API fora do
+      # Docker), dentro da rede do Compose o Postgres só é alcançável pelo
+      # hostname do serviço `db`, nunca por localhost/127.0.0.1.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-amactive}:${POSTGRES_PASSWORD:-amactive}@db:5432/${POSTGRES_DB:-amactive}
     ports:
       - "8000:8000"
     volumes:
@@ -34,6 +49,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # Sem curl/wget na imagem base (python:3.12-slim) — usa o próprio
+      # interpretador Python já presente para não inflar a imagem só para
+      # o healthcheck. Falha (exceção -> exit code != 0) se /health não
+      # responder 2xx dentro do timeout.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    # Limites de recurso (perfil "API leve" da tabela de dimensionamento).
+    # mem_limit/cpus, não deploy.resources — ver comentário no serviço `db`.
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: "0.5"
 
 volumes:
   amactive_db_data:

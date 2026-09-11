@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
@@ -28,6 +29,14 @@ app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description="API de controle de estoque e vendas da AMACTIVE. Ver docs/openapi.yaml.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")

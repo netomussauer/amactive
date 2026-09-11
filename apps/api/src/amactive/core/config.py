@@ -14,9 +14,17 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://amactive:amactive@localhost:5432/amactive"
 
+    # Origens liberadas para CORS, separadas por vírgula. O default cobre o
+    # Vite dev server local (ver apps/web/vite.config.ts, porta 5173).
+    cors_origins: str = "http://localhost:5173"
+
     jwt_secret: str = _INSECURE_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 8
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @model_validator(mode="after")
     def _rejeita_segredo_padrao_fora_de_dev(self) -> "Settings":
