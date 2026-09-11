@@ -4,6 +4,7 @@ Variantes, Estoque)."""
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -36,6 +37,9 @@ class CriarProdutoRequest(BaseModel):
     descricao: str | None = None
     categoria_id: UUID | None = None
     marca: str = "AMACTIVE"
+    # NULL = sem promoção ativa — ver docs/data-model.md decisão #14. Quando
+    # presente, sempre (0, 100], mesma constraint de migrations/000004.
+    desconto_percentual: Decimal | None = Field(default=None, gt=0, le=100)
 
 
 class AtualizarProdutoRequest(CriarProdutoRequest):
@@ -48,6 +52,7 @@ class ProdutoResponse(BaseModel):
     descricao: str | None
     categoria_id: UUID | None
     marca: str
+    desconto_percentual: Decimal | None
     ativo: bool
     criado_em: datetime
 
@@ -62,6 +67,12 @@ class VarianteResponse(BaseModel):
     preco_custo: MoneyStr | None
     ativo: bool
     quantidade_estoque: int
+    # Repassados do produto pai (ver docs/data-model.md decisão #14) — usados
+    # tanto na listagem de variantes de um produto quanto na busca de
+    # variante por SKU no PDV, para o frontend calcular `desconto_item` de
+    # `POST /pedidos` automaticamente ao adicionar o item ao carrinho.
+    desconto_percentual: MoneyStr | None = None
+    preco_promocional: MoneyStr | None = None
 
 
 class ProdutoDetalheResponse(ProdutoResponse):

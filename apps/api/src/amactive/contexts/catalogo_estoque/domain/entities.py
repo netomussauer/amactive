@@ -38,6 +38,9 @@ class Produto:
     descricao: str | None
     categoria_id: UUID | None
     marca: str
+    # NULL = sem promoção ativa (não é uma coluna boolean separada — ver
+    # docs/data-model.md decisão #14). Quando presente, sempre (0, 100].
+    desconto_percentual: Decimal | None
     ativo: bool
     criado_em: datetime
 

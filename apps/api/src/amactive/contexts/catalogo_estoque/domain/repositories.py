@@ -32,7 +32,13 @@ class CategoriaRepository(Protocol):
 
 class ProdutoRepository(Protocol):
     async def criar(
-        self, *, nome: str, descricao: str | None, categoria_id: UUID | None, marca: str
+        self,
+        *,
+        nome: str,
+        descricao: str | None,
+        categoria_id: UUID | None,
+        marca: str,
+        desconto_percentual: Decimal | None = None,
     ) -> Produto: ...
 
     async def listar(

@@ -67,7 +67,13 @@ class SqlAlchemyProdutoRepository:
         self._session = session
 
     async def criar(
-        self, *, nome: str, descricao: str | None, categoria_id: UUID | None, marca: str
+        self,
+        *,
+        nome: str,
+        descricao: str | None,
+        categoria_id: UUID | None,
+        marca: str,
+        desconto_percentual: Decimal | None = None,
     ) -> Produto:
         modelo = ProdutoModel(
             id=uuid.uuid4(),
@@ -75,6 +81,7 @@ class SqlAlchemyProdutoRepository:
             descricao=descricao,
             categoria_id=categoria_id,
             marca=marca,
+            desconto_percentual=desconto_percentual,
             ativo=True,
             criado_em=_now(),
         )
@@ -122,7 +129,10 @@ class SqlAlchemyProdutoRepository:
         if modelo is None:
             return None
         for chave, valor in campos.items():
-            if valor is not None or chave in {"descricao", "categoria_id"}:
+            # "descricao"/"categoria_id"/"desconto_percentual" aceitam None
+            # explicitamente (limpar o campo é uma ação válida — no caso de
+            # desconto_percentual, é como se encerra uma promoção ativa).
+            if valor is not None or chave in {"descricao", "categoria_id", "desconto_percentual"}:
                 setattr(modelo, chave, valor)
         await self._session.flush()
         return _produto_para_entidade(modelo)
@@ -458,6 +468,7 @@ def _produto_para_entidade(modelo: ProdutoModel) -> Produto:
         descricao=modelo.descricao,
         categoria_id=modelo.categoria_id,
         marca=modelo.marca,
+        desconto_percentual=modelo.desconto_percentual,
         ativo=modelo.ativo,
         criado_em=modelo.criado_em,
     )

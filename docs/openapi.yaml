@@ -975,6 +975,14 @@ components:
         descricao: { type: string }
         categoria_id: { type: string, format: uuid, nullable: true }
         marca: { type: string, default: "AMACTIVE" }
+        desconto_percentual:
+          type: number
+          format: decimal
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 100
+          nullable: true
+          description: "Percentual de desconto promocional. null = sem promoção ativa (ver docs/data-model.md decisão #14)."
     AtualizarProdutoRequest:
       allOf:
         - $ref: "#/components/schemas/CriarProdutoRequest"
@@ -989,6 +997,11 @@ components:
         descricao: { type: string, nullable: true }
         categoria_id: { type: string, format: uuid, nullable: true }
         marca: { type: string }
+        desconto_percentual:
+          type: number
+          format: decimal
+          nullable: true
+          description: "null = sem promoção ativa."
         ativo: { type: boolean }
         criado_em: { type: string, format: date-time }
     ProdutoDetalheResponse:
@@ -1045,6 +1058,14 @@ components:
         preco_custo: { type: string, nullable: true }
         ativo: { type: boolean }
         quantidade_estoque: { type: integer, description: "Saldo atual (denormalizado para conveniência)" }
+        desconto_percentual:
+          type: string
+          nullable: true
+          description: "Repassado do produto pai, formatado como os demais campos decimais do contrato. null = sem promoção ativa."
+        preco_promocional:
+          type: string
+          nullable: true
+          description: "preco_venda com desconto_percentual já aplicado (ver shared_kernel/money.aplicar_desconto_percentual). null se o produto não tem desconto ativo."
 
     # ── Imagens ──
     ImagemResponse:

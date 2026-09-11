@@ -36,6 +36,9 @@ class ProdutoModel(Base):
     nome: Mapped[str] = mapped_column(String(200))
     descricao: Mapped[str | None] = mapped_column(Text)
     marca: Mapped[str] = mapped_column(String(100))
+    # Ver migrations/000004_produto_desconto_promocional e
+    # docs/data-model.md decisão #14 — NULL = sem promoção ativa.
+    desconto_percentual: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     ativo: Mapped[bool] = mapped_column(Boolean)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

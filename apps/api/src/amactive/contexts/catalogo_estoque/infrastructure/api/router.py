@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
@@ -83,7 +84,7 @@ from amactive.contexts.catalogo_estoque.infrastructure.storage import (
 )
 from amactive.core.security import CurrentUser, get_current_user
 from amactive.shared_kernel.database import get_db_session
-from amactive.shared_kernel.money import parse_money, to_money_str
+from amactive.shared_kernel.money import aplicar_desconto_percentual, parse_money, to_money_str
 from amactive.shared_kernel.schemas import Pagination
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -147,6 +148,7 @@ async def criar_produto(
         descricao=payload.descricao,
         categoria_id=payload.categoria_id,
         marca=payload.marca,
+        desconto_percentual=payload.desconto_percentual,
     )
     await session.commit()
     return _produto_response(produto)
@@ -161,7 +163,9 @@ async def obter_produto(
         produto_id
     )
     estoque_repo = SqlAlchemyEstoqueRepository(session)
-    variantes_response = [await _variante_response(v, estoque_repo) for v in variantes]
+    variantes_response = [
+        await _variante_response(v, estoque_repo, produto.desconto_percentual) for v in variantes
+    ]
     return ProdutoDetalheResponse(
         **_produto_response(produto).model_dump(), variantes=variantes_response
     )
@@ -179,6 +183,7 @@ async def atualizar_produto(
         descricao=payload.descricao,
         categoria_id=payload.categoria_id,
         marca=payload.marca,
+        desconto_percentual=payload.desconto_percentual,
         ativo=payload.ativo,
     )
     await session.commit()
@@ -200,11 +205,17 @@ async def inativar_produto(
 async def listar_variantes_do_produto(
     produto_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> VarianteListResponse:
+    produto = await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(produto_id)
     variantes = await ListarVariantesDoProdutoQuery(SqlAlchemyVarianteRepository(session)).executar(
         produto_id
     )
     estoque_repo = SqlAlchemyEstoqueRepository(session)
-    return VarianteListResponse(data=[await _variante_response(v, estoque_repo) for v in variantes])
+    return VarianteListResponse(
+        data=[
+            await _variante_response(v, estoque_repo, produto.desconto_percentual)
+            for v in variantes
+        ]
+    )
 
 
 @router.post(
@@ -220,7 +231,7 @@ async def criar_variante(
     usuario: CurrentUser = Depends(get_current_user),
 ) -> VarianteResponse:
     # Garante que o produto exista (404 antes de tentar criar a variante).
-    await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(produto_id)
+    produto = await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(produto_id)
 
     variante_repo = SqlAlchemyVarianteRepository(session)
     movimentacao_repo = SqlAlchemyMovimentacaoRepository(session)
@@ -235,7 +246,9 @@ async def criar_variante(
         usuario_id=usuario.id,
     )
     await session.commit()
-    return await _variante_response(variante, SqlAlchemyEstoqueRepository(session))
+    return await _variante_response(
+        variante, SqlAlchemyEstoqueRepository(session), produto.desconto_percentual
+    )
 
 
 @router.get("/variantes/{variante_id}", tags=["Variantes"], response_model=VarianteResponse)
@@ -243,7 +256,12 @@ async def obter_variante(
     variante_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> VarianteResponse:
     variante = await ObterVarianteQuery(SqlAlchemyVarianteRepository(session)).executar(variante_id)
-    return await _variante_response(variante, SqlAlchemyEstoqueRepository(session))
+    produto = await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(
+        variante.produto_id
+    )
+    return await _variante_response(
+        variante, SqlAlchemyEstoqueRepository(session), produto.desconto_percentual
+    )
 
 
 @router.put("/variantes/{variante_id}", tags=["Variantes"], response_model=VarianteResponse)
@@ -260,8 +278,13 @@ async def atualizar_variante(
     variante = await AtualizarVarianteCommand(SqlAlchemyVarianteRepository(session)).executar(
         variante_id, **campos
     )
+    produto = await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(
+        variante.produto_id
+    )
     await session.commit()
-    return await _variante_response(variante, SqlAlchemyEstoqueRepository(session))
+    return await _variante_response(
+        variante, SqlAlchemyEstoqueRepository(session), produto.desconto_percentual
+    )
 
 
 @router.delete(
@@ -438,15 +461,23 @@ def _produto_response(produto: Produto) -> ProdutoResponse:
         descricao=produto.descricao,
         categoria_id=produto.categoria_id,
         marca=produto.marca,
+        desconto_percentual=produto.desconto_percentual,
         ativo=produto.ativo,
         criado_em=produto.criado_em,
     )
 
 
 async def _variante_response(
-    variante: ProdutoVariante, estoque_repo: SqlAlchemyEstoqueRepository
+    variante: ProdutoVariante,
+    estoque_repo: SqlAlchemyEstoqueRepository,
+    desconto_percentual: Decimal | None = None,
 ) -> VarianteResponse:
     estoque = await estoque_repo.buscar_por_variante(variante.id)
+    preco_promocional = (
+        to_money_str(aplicar_desconto_percentual(variante.preco_venda, desconto_percentual))
+        if desconto_percentual is not None
+        else None
+    )
     return VarianteResponse(
         id=variante.id,
         produto_id=variante.produto_id,
@@ -459,6 +490,10 @@ async def _variante_response(
         else None,
         ativo=variante.ativo,
         quantidade_estoque=estoque.quantidade if estoque else 0,
+        desconto_percentual=to_money_str(desconto_percentual)
+        if desconto_percentual is not None
+        else None,
+        preco_promocional=preco_promocional,
     )
 
 

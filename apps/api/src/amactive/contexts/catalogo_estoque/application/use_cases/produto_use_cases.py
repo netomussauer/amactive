@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
 from amactive.contexts.catalogo_estoque.domain.entities import Produto
@@ -14,10 +15,20 @@ class CriarProdutoCommand:
         self._repository = repository
 
     async def executar(
-        self, *, nome: str, descricao: str | None, categoria_id: UUID | None, marca: str
+        self,
+        *,
+        nome: str,
+        descricao: str | None,
+        categoria_id: UUID | None,
+        marca: str,
+        desconto_percentual: Decimal | None = None,
     ) -> Produto:
         return await self._repository.criar(
-            nome=nome, descricao=descricao, categoria_id=categoria_id, marca=marca
+            nome=nome,
+            descricao=descricao,
+            categoria_id=categoria_id,
+            marca=marca,
+            desconto_percentual=desconto_percentual,
         )
 
 
