@@ -7,10 +7,13 @@ vive aqui — ver docs/SDD.md §1.4 (Clean Architecture por contexto).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import text
 
@@ -96,6 +99,13 @@ app.include_router(catalogo_estoque_router)
 app.include_router(vendas_router)
 app.include_router(cadastros_router)
 app.include_router(relatorios_router)
+
+# Serve as imagens de produto gravadas em disco local (ver
+# catalogo_estoque/infrastructure/storage.py e docs/data-model.md decisão
+# #13). O diretório é criado no startup caso ainda não exista (primeira
+# execução local fora do Docker, ou volume Docker ainda vazio).
+Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.uploads_dir), name="media")
 
 
 @app.get("/health", tags=["Infra"])

@@ -14,6 +14,12 @@ htmlcov/
 dist/
 build/
 
+# Uploads locais de imagem de produto (volume Docker em produção/dev via
+# compose — ver docker-compose.yml `amactive_uploads_data`; este caminho só
+# é usado quando a API roda fora do Docker, apontando para o default de
+# `Settings.uploads_dir`).
+apps/api/uploads/
+
 # ── Node / Web (apps/web) ──────────────────────────────────────
 node_modules/
 apps/web/dist/

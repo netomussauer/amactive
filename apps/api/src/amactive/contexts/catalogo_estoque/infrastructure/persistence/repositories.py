@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, func, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,7 @@ from amactive.contexts.catalogo_estoque.domain.entities import (
     MotivoMovimentacao,
     MovimentacaoEstoque,
     Produto,
+    ProdutoImagem,
     ProdutoVariante,
     TipoMovimentacao,
 )
@@ -29,6 +30,7 @@ from amactive.contexts.catalogo_estoque.infrastructure.persistence.models import
     CategoriaModel,
     EstoqueModel,
     MovimentacaoEstoqueModel,
+    ProdutoImagemModel,
     ProdutoModel,
     ProdutoVarianteModel,
 )
@@ -196,6 +198,100 @@ class SqlAlchemyVarianteRepository:
         modelo.ativo = False
         await self._session.flush()
         return True
+
+
+class SqlAlchemyImagemRepository:
+    """Implementação de `ImagemRepository`. Todos os métodos que recebem
+    `produto_id`+`imagem_id` verificam que a imagem pertence de fato àquele
+    produto antes de agir — devolvem `None` (404 na camada de aplicação)
+    caso contrário, para nunca permitir manipular a imagem de um produto
+    através da URL de outro."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def criar(
+        self, *, produto_id: UUID, cor: str, url: str, ordem: int, principal: bool
+    ) -> ProdutoImagem:
+        modelo = ProdutoImagemModel(
+            id=uuid.uuid4(),
+            produto_id=produto_id,
+            cor=cor,
+            url=url,
+            ordem=ordem,
+            principal=principal,
+            criado_em=_now(),
+        )
+        self._session.add(modelo)
+        await self._session.flush()
+        return _imagem_para_entidade(modelo)
+
+    async def listar_por_produto(
+        self, produto_id: UUID, *, cor: str | None = None
+    ) -> list[ProdutoImagem]:
+        condicoes: list[ColumnElement[bool]] = [ProdutoImagemModel.produto_id == produto_id]
+        if cor:
+            condicoes.append(ProdutoImagemModel.cor == cor)
+        resultado = await self._session.execute(
+            select(ProdutoImagemModel)
+            .where(*condicoes)
+            .order_by(ProdutoImagemModel.cor, ProdutoImagemModel.ordem)
+        )
+        return [_imagem_para_entidade(m) for m in resultado.scalars().all()]
+
+    async def buscar_por_id(self, produto_id: UUID, imagem_id: UUID) -> ProdutoImagem | None:
+        modelo = await self._session.get(ProdutoImagemModel, imagem_id)
+        if modelo is None or modelo.produto_id != produto_id:
+            return None
+        return _imagem_para_entidade(modelo)
+
+    async def contar_por_produto_e_cor(self, produto_id: UUID, cor: str) -> int:
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(ProdutoImagemModel)
+            .where(ProdutoImagemModel.produto_id == produto_id, ProdutoImagemModel.cor == cor)
+        )
+        return int(total or 0)
+
+    async def definir_principal(self, produto_id: UUID, imagem_id: UUID) -> ProdutoImagem | None:
+        modelo = await self._session.get(ProdutoImagemModel, imagem_id)
+        if modelo is None or modelo.produto_id != produto_id:
+            return None
+        # Dois UPDATEs sequenciais (desmarcar a antiga, depois marcar a
+        # nova) em vez de um só, para nunca violar o índice único parcial
+        # `uq_produto_imagem_principal_por_cor` mesmo dentro da mesma
+        # transação — ver docs/data-model.md decisão #13.
+        await self._session.execute(
+            update(ProdutoImagemModel)
+            .where(
+                ProdutoImagemModel.produto_id == produto_id,
+                ProdutoImagemModel.cor == modelo.cor,
+                ProdutoImagemModel.principal.is_(True),
+            )
+            .values(principal=False)
+        )
+        modelo.principal = True
+        await self._session.flush()
+        return _imagem_para_entidade(modelo)
+
+    async def atualizar_ordem(
+        self, produto_id: UUID, imagem_id: UUID, *, ordem: int
+    ) -> ProdutoImagem | None:
+        modelo = await self._session.get(ProdutoImagemModel, imagem_id)
+        if modelo is None or modelo.produto_id != produto_id:
+            return None
+        modelo.ordem = ordem
+        await self._session.flush()
+        return _imagem_para_entidade(modelo)
+
+    async def remover(self, produto_id: UUID, imagem_id: UUID) -> ProdutoImagem | None:
+        modelo = await self._session.get(ProdutoImagemModel, imagem_id)
+        if modelo is None or modelo.produto_id != produto_id:
+            return None
+        entidade = _imagem_para_entidade(modelo)
+        await self._session.delete(modelo)
+        await self._session.flush()
+        return entidade
 
 
 class SqlAlchemyEstoqueRepository:
@@ -377,6 +473,18 @@ def _variante_para_entidade(modelo: ProdutoVarianteModel) -> ProdutoVariante:
         preco_venda=modelo.preco_venda,
         preco_custo=modelo.preco_custo,
         ativo=modelo.ativo,
+    )
+
+
+def _imagem_para_entidade(modelo: ProdutoImagemModel) -> ProdutoImagem:
+    return ProdutoImagem(
+        id=modelo.id,
+        produto_id=modelo.produto_id,
+        cor=modelo.cor,
+        url=modelo.url,
+        ordem=modelo.ordem,
+        principal=modelo.principal,
+        criado_em=modelo.criado_em,
     )
 
 

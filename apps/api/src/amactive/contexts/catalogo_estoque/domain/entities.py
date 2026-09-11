@@ -55,6 +55,20 @@ class ProdutoVariante:
 
 
 @dataclass(frozen=True)
+class ProdutoImagem:
+    """Imagem de galeria de um produto, vinculada à COR (não à variante
+    tamanho+cor) — ver docs/data-model.md decisão #13."""
+
+    id: UUID
+    produto_id: UUID
+    cor: str
+    url: str
+    ordem: int
+    principal: bool
+    criado_em: datetime
+
+
+@dataclass(frozen=True)
 class Estoque:
     variante_id: UUID
     sku: str

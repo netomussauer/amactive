@@ -21,6 +21,8 @@ tags:
     description: Catálogo & Estoque
   - name: Variantes
     description: Catálogo & Estoque
+  - name: Imagens
+    description: Catálogo & Estoque
   - name: Estoque
     description: Catálogo & Estoque
   - name: Pedidos
@@ -266,6 +268,121 @@ paths:
       responses:
         "204":
           description: Variante inativada
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+  # ───────────────────────── Imagens ─────────────────────────
+  /produtos/{produtoId}/imagens:
+    parameters:
+      - $ref: "#/components/parameters/ProdutoId"
+    get:
+      tags: [Imagens]
+      summary: Listar imagens (galeria) de um produto
+      operationId: listarImagensDoProduto
+      parameters:
+        - name: cor
+          in: query
+          description: Filtra a galeria por cor (mesmo valor livre usado em produto_variante.cor)
+          schema: { type: string }
+      responses:
+        "200":
+          description: Galeria de imagens do produto, ordenada por `cor` e `ordem`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImagemListResponse"
+    post:
+      tags: [Imagens]
+      summary: Upload de imagem de produto
+      description: >
+        A `cor` informada precisa corresponder a uma cor existente entre as
+        variantes ativas do produto (senão 422 — `cor` não é FK, ver
+        docs/data-model.md decisão #13). Aceita apenas `image/jpeg`,
+        `image/png` e `image/webp`, até 5MB. A primeira imagem enviada para
+        uma cor é automaticamente marcada como `principal`.
+      operationId: uploadImagem
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cor, arquivo]
+              properties:
+                cor: { type: string, maxLength: 50 }
+                arquivo: { type: string, format: binary }
+      responses:
+        "201":
+          description: Imagem criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImagemResponse"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "422":
+          $ref: "#/components/responses/ErroValidacao"
+        "413":
+          description: Arquivo excede o tamanho máximo permitido (5MB)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /produtos/{produtoId}/imagens/{imagemId}:
+    parameters:
+      - $ref: "#/components/parameters/ProdutoId"
+      - $ref: "#/components/parameters/ImagemId"
+    patch:
+      tags: [Imagens]
+      summary: Reordenar imagem (atualizar `ordem`)
+      operationId: atualizarOrdemImagem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtualizarOrdemImagemRequest"
+      responses:
+        "200":
+          description: Imagem atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImagemResponse"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "422":
+          $ref: "#/components/responses/ErroValidacao"
+    delete:
+      tags: [Imagens]
+      summary: Remover imagem (registro em banco + arquivo físico em disco)
+      operationId: removerImagem
+      responses:
+        "204":
+          description: Imagem removida
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+
+  /produtos/{produtoId}/imagens/{imagemId}/principal:
+    parameters:
+      - $ref: "#/components/parameters/ProdutoId"
+      - $ref: "#/components/parameters/ImagemId"
+    patch:
+      tags: [Imagens]
+      summary: Definir imagem como principal (capa) da sua cor
+      description: >
+        Desmarca atomicamente a imagem principal anterior da mesma cor —
+        no máximo uma principal por produto+cor (índice único parcial em
+        `produto_imagem`, ver docs/data-model.md decisão #13).
+      operationId: definirImagemPrincipal
+      responses:
+        "200":
+          description: Imagem definida como principal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImagemResponse"
         "404":
           $ref: "#/components/responses/NaoEncontrado"
 
@@ -749,6 +866,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    ImagemId:
+      name: imagemId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     PedidoId:
       name: pedidoId
       in: path
@@ -923,6 +1045,29 @@ components:
         preco_custo: { type: string, nullable: true }
         ativo: { type: boolean }
         quantidade_estoque: { type: integer, description: "Saldo atual (denormalizado para conveniência)" }
+
+    # ── Imagens ──
+    ImagemResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        produto_id: { type: string, format: uuid }
+        cor: { type: string }
+        url: { type: string, description: "Caminho público, ex: /media/produtos/{produtoId}/{uuid}.jpg" }
+        ordem: { type: integer, minimum: 0 }
+        principal: { type: boolean }
+        criado_em: { type: string, format: date-time }
+    ImagemListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ImagemResponse" }
+    AtualizarOrdemImagemRequest:
+      type: object
+      required: [ordem]
+      properties:
+        ordem: { type: integer, minimum: 0 }
 
     # ── Estoque ──
     TipoMovimentacao:

@@ -14,6 +14,16 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://amactive:amactive@localhost:5432/amactive"
 
+    # Diretório onde as imagens de produto são gravadas em disco (volume
+    # Docker nesta fase — ver docs/data-model.md decisão #13). Default
+    # relativo (`./uploads`, relativo ao diretório de trabalho do processo
+    # uvicorn) cobre o caso de rodar a API fora do Docker; ao rodar via
+    # `docker compose up`, o serviço `api` sobrescreve esta variável para o
+    # caminho absoluto `/app/uploads` (ver `environment:` em
+    # docker-compose.yml, mesmo padrão de `DATABASE_URL` acima), que é onde
+    # o volume nomeado `amactive_uploads_data` é montado.
+    uploads_dir: str = "./uploads"
+
     # Origens liberadas para CORS, separadas por vírgula. O default cobre o
     # Vite dev server local (ver apps/web/vite.config.ts, porta 5173).
     cors_origins: str = "http://localhost:5173"

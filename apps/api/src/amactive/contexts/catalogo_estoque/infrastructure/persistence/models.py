@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from amactive.shared_kernel.database import Base
@@ -55,6 +55,22 @@ class ProdutoVarianteModel(Base):
     ativo: Mapped[bool] = mapped_column(Boolean)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProdutoImagemModel(Base):
+    """Mapeia `migrations/000003_produto_imagem.up.sql`. `cor` não é FK
+    composta contra `produto_variante` — ver docs/data-model.md decisão #13
+    e a validação em application/use_cases/imagem_use_cases.py."""
+
+    __tablename__ = "produto_imagem"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    produto_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("produto.id", ondelete="CASCADE"))
+    cor: Mapped[str] = mapped_column(String(50))
+    url: Mapped[str] = mapped_column(String(500))
+    ordem: Mapped[int] = mapped_column(SmallInteger)
+    principal: Mapped[bool] = mapped_column(Boolean)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class EstoqueModel(Base):

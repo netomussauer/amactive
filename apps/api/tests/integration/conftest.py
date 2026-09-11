@@ -92,9 +92,7 @@ async def _aplicar_migrations() -> None:
             if arquivo.name in aplicadas:
                 continue
             await conn.execute(arquivo.read_text(encoding="utf-8"))
-            await conn.execute(
-                "INSERT INTO schema_migrations (versao) VALUES ($1)", arquivo.name
-            )
+            await conn.execute("INSERT INTO schema_migrations (versao) VALUES ($1)", arquivo.name)
     finally:
         await conn.close()
 

@@ -58,6 +58,16 @@ class NaoAutorizado(DomainError):
     title = "Não autorizado"
 
 
+class PayloadMuitoGrande(DomainError):
+    """Upload cujo tamanho excede o limite aceito pela aplicação (ex.: imagem
+    de produto acima de 5MB — ver
+    catalogo_estoque/application/use_cases/imagem_use_cases.py)."""
+
+    status_code = 413
+    type_slug = "payload-muito-grande"
+    title = "Arquivo excede o tamanho máximo permitido"
+
+
 class ConflitoTransacional(DomainError):
     """Deadlock genuíno detectado pelo Postgres (SQLSTATE 40P01) mesmo após a
     aplicação seguir a disciplina de ordenação por `variante_id` — ver

@@ -18,6 +18,7 @@ from amactive.contexts.catalogo_estoque.domain.entities import (
     MotivoMovimentacao,
     MovimentacaoEstoque,
     Produto,
+    ProdutoImagem,
     ProdutoVariante,
     TipoMovimentacao,
 )
@@ -70,6 +71,40 @@ class VarianteRepository(Protocol):
     async def atualizar(self, variante_id: UUID, **campos: object) -> ProdutoVariante | None: ...
 
     async def inativar(self, variante_id: UUID) -> bool: ...
+
+
+class ImagemRepository(Protocol):
+    async def criar(
+        self, *, produto_id: UUID, cor: str, url: str, ordem: int, principal: bool
+    ) -> ProdutoImagem: ...
+
+    async def listar_por_produto(
+        self, produto_id: UUID, *, cor: str | None = None
+    ) -> list[ProdutoImagem]: ...
+
+    async def buscar_por_id(self, produto_id: UUID, imagem_id: UUID) -> ProdutoImagem | None: ...
+
+    async def contar_por_produto_e_cor(self, produto_id: UUID, cor: str) -> int: ...
+
+    async def definir_principal(
+        self, produto_id: UUID, imagem_id: UUID
+    ) -> ProdutoImagem | None: ...
+
+    async def atualizar_ordem(
+        self, produto_id: UUID, imagem_id: UUID, *, ordem: int
+    ) -> ProdutoImagem | None: ...
+
+    async def remover(self, produto_id: UUID, imagem_id: UUID) -> ProdutoImagem | None: ...
+
+
+class ArmazenamentoDeImagemPort(Protocol):
+    """Porta de armazenamento físico das imagens — implementação concreta em
+    `infrastructure/storage.py` (disco local nesta fase, ver
+    docs/data-model.md decisão #13)."""
+
+    async def salvar(self, *, produto_id: UUID, conteudo: bytes, extensao: str) -> str: ...
+
+    async def remover(self, url: str) -> None: ...
 
 
 class EstoqueRepository(Protocol):

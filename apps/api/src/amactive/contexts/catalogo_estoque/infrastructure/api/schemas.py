@@ -94,6 +94,25 @@ class VarianteListResponse(BaseModel):
     data: list[VarianteResponse]
 
 
+# ── Imagens ──
+class ImagemResponse(BaseModel):
+    id: UUID
+    produto_id: UUID
+    cor: str
+    url: str
+    ordem: int
+    principal: bool
+    criado_em: datetime
+
+
+class ImagemListResponse(BaseModel):
+    data: list[ImagemResponse]
+
+
+class AtualizarOrdemImagemRequest(BaseModel):
+    ordem: int = Field(ge=0)
+
+
 # ── Estoque ──
 class EstoqueResponse(BaseModel):
     variante_id: UUID

@@ -13,6 +13,7 @@ COPY docker-entrypoint.sh ./
 RUN pip install --no-cache-dir . \
     && chmod +x docker-entrypoint.sh \
     && useradd --create-home --uid 1000 appuser \
+    && mkdir -p /app/uploads \
     && chown -R appuser:appuser /app
 
 USER appuser

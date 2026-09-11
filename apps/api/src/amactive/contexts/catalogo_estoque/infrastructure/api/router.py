@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.catalogo_estoque.application.use_cases.categoria_use_cases import (
@@ -16,6 +16,13 @@ from amactive.contexts.catalogo_estoque.application.use_cases.estoque_use_cases 
     ListarAlertasEstoqueQuery,
     ListarEstoqueQuery,
     ListarMovimentacoesQuery,
+)
+from amactive.contexts.catalogo_estoque.application.use_cases.imagem_use_cases import (
+    AtualizarOrdemImagemCommand,
+    DefinirImagemPrincipalCommand,
+    ListarImagensDoProdutoQuery,
+    RemoverImagemCommand,
+    UploadImagemCommand,
 )
 from amactive.contexts.catalogo_estoque.application.use_cases.produto_use_cases import (
     AtualizarProdutoCommand,
@@ -36,10 +43,12 @@ from amactive.contexts.catalogo_estoque.domain.entities import (
     MotivoMovimentacao,
     MovimentacaoEstoque,
     Produto,
+    ProdutoImagem,
     ProdutoVariante,
     TipoMovimentacao,
 )
 from amactive.contexts.catalogo_estoque.infrastructure.api.schemas import (
+    AtualizarOrdemImagemRequest,
     AtualizarProdutoRequest,
     AtualizarVarianteRequest,
     CategoriaListResponse,
@@ -51,6 +60,8 @@ from amactive.contexts.catalogo_estoque.infrastructure.api.schemas import (
     EstoqueAlertaListResponse,
     EstoqueListResponse,
     EstoqueResponse,
+    ImagemListResponse,
+    ImagemResponse,
     MovimentacaoListResponse,
     MovimentacaoResponse,
     ProdutoDetalheResponse,
@@ -62,9 +73,13 @@ from amactive.contexts.catalogo_estoque.infrastructure.api.schemas import (
 from amactive.contexts.catalogo_estoque.infrastructure.persistence.repositories import (
     SqlAlchemyCategoriaRepository,
     SqlAlchemyEstoqueRepository,
+    SqlAlchemyImagemRepository,
     SqlAlchemyMovimentacaoRepository,
     SqlAlchemyProdutoRepository,
     SqlAlchemyVarianteRepository,
+)
+from amactive.contexts.catalogo_estoque.infrastructure.storage import (
+    LocalDiskArmazenamentoDeImagem,
 )
 from amactive.core.security import CurrentUser, get_current_user
 from amactive.shared_kernel.database import get_db_session
@@ -259,6 +274,89 @@ async def inativar_variante(
     await session.commit()
 
 
+# ── Imagens ──
+@router.post(
+    "/produtos/{produto_id}/imagens",
+    tags=["Imagens"],
+    response_model=ImagemResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_imagem(
+    produto_id: UUID,
+    cor: str = Form(..., max_length=50),
+    arquivo: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db_session),
+) -> ImagemResponse:
+    # Garante que o produto exista (404 antes de validar cor/arquivo).
+    await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(produto_id)
+
+    conteudo = await arquivo.read()
+    imagem = await UploadImagemCommand(
+        SqlAlchemyVarianteRepository(session),
+        SqlAlchemyImagemRepository(session),
+        LocalDiskArmazenamentoDeImagem(),
+    ).executar(produto_id=produto_id, cor=cor, content_type=arquivo.content_type, conteudo=conteudo)
+    await session.commit()
+    return _imagem_response(imagem)
+
+
+@router.get("/produtos/{produto_id}/imagens", tags=["Imagens"], response_model=ImagemListResponse)
+async def listar_imagens_do_produto(
+    produto_id: UUID,
+    cor: str | None = None,
+    session: AsyncSession = Depends(get_db_session),
+) -> ImagemListResponse:
+    imagens = await ListarImagensDoProdutoQuery(SqlAlchemyImagemRepository(session)).executar(
+        produto_id, cor=cor
+    )
+    return ImagemListResponse(data=[_imagem_response(i) for i in imagens])
+
+
+@router.patch(
+    "/produtos/{produto_id}/imagens/{imagem_id}/principal",
+    tags=["Imagens"],
+    response_model=ImagemResponse,
+)
+async def definir_imagem_principal(
+    produto_id: UUID, imagem_id: UUID, session: AsyncSession = Depends(get_db_session)
+) -> ImagemResponse:
+    imagem = await DefinirImagemPrincipalCommand(SqlAlchemyImagemRepository(session)).executar(
+        produto_id, imagem_id
+    )
+    await session.commit()
+    return _imagem_response(imagem)
+
+
+@router.patch(
+    "/produtos/{produto_id}/imagens/{imagem_id}", tags=["Imagens"], response_model=ImagemResponse
+)
+async def atualizar_ordem_imagem(
+    produto_id: UUID,
+    imagem_id: UUID,
+    payload: AtualizarOrdemImagemRequest,
+    session: AsyncSession = Depends(get_db_session),
+) -> ImagemResponse:
+    imagem = await AtualizarOrdemImagemCommand(SqlAlchemyImagemRepository(session)).executar(
+        produto_id, imagem_id, ordem=payload.ordem
+    )
+    await session.commit()
+    return _imagem_response(imagem)
+
+
+@router.delete(
+    "/produtos/{produto_id}/imagens/{imagem_id}",
+    tags=["Imagens"],
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remover_imagem(
+    produto_id: UUID, imagem_id: UUID, session: AsyncSession = Depends(get_db_session)
+) -> None:
+    await RemoverImagemCommand(
+        SqlAlchemyImagemRepository(session), LocalDiskArmazenamentoDeImagem()
+    ).executar(produto_id, imagem_id)
+    await session.commit()
+
+
 # ── Estoque ──
 @router.get("/estoque", tags=["Estoque"], response_model=EstoqueListResponse)
 async def listar_estoque(
@@ -361,6 +459,18 @@ async def _variante_response(
         else None,
         ativo=variante.ativo,
         quantidade_estoque=estoque.quantidade if estoque else 0,
+    )
+
+
+def _imagem_response(imagem: ProdutoImagem) -> ImagemResponse:
+    return ImagemResponse(
+        id=imagem.id,
+        produto_id=imagem.produto_id,
+        cor=imagem.cor,
+        url=imagem.url,
+        ordem=imagem.ordem,
+        principal=imagem.principal,
+        criado_em=imagem.criado_em,
     )
 
 
