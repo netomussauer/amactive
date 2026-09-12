@@ -5,6 +5,41 @@ info:
     API de controle de estoque e vendas da AMACTIVE (moda fitness feminina).
     Uso interno — sem emissão fiscal e sem gateway de pagamento real no MVP.
     Ver docs/SDD.md para o desenho arquitetural completo.
+
+
+    ### Autorização por papel (RBAC)
+
+    Todo endpoint protegido exige um Bearer token válido (`POST /auth/login`
+    é o único público) — ver `security: [bearerAuth: []]` global abaixo.
+    Além da autenticação, cada endpoint também exige que o papel do usuário
+    (`ADMIN`/`VENDEDOR`/`ESTOQUISTA`, claim `papel` do JWT) esteja entre os
+    papéis permitidos para aquele recurso, documentados por operação via a
+    extensão `x-roles` (retorna `403 acesso-negado` — RFC 7807 — se o papel
+    não bater). Resumo da matriz (ver `core/security.requer_papel` para a
+    implementação):
+
+
+    | Recurso | ADMIN | VENDEDOR | ESTOQUISTA |
+
+    |---|---|---|---|
+
+    | Produtos/Variantes/Categorias/Imagens — leitura | sim | sim | sim |
+
+    | Produtos/Variantes/Categorias/Imagens — escrita | sim | não | sim |
+
+    | Estoque — leitura | sim | sim | sim |
+
+    | Estoque — escrita (movimentação) | sim | não | sim |
+
+    | Pedidos — leitura | sim | sim | sim |
+
+    | Pedidos — escrita (criar/cancelar) | sim | sim | não |
+
+    | Clientes — leitura e escrita | sim | sim | não |
+
+    | Fornecedores — leitura e escrita | sim | não | sim |
+
+    | Relatórios/Dashboard — leitura | sim | não | não |
   version: "0.1.0"
   contact:
     name: AMACTIVE Engineering
@@ -67,6 +102,7 @@ paths:
       tags: [Categorias]
       summary: Listar categorias
       operationId: listarCategorias
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Lista de categorias
@@ -78,6 +114,7 @@ paths:
       tags: [Categorias]
       summary: Criar categoria
       operationId: criarCategoria
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -100,6 +137,7 @@ paths:
       tags: [Produtos]
       summary: Listar produtos
       operationId: listarProdutos
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -124,6 +162,7 @@ paths:
       tags: [Produtos]
       summary: Criar produto
       operationId: criarProduto
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -147,6 +186,7 @@ paths:
       tags: [Produtos]
       summary: Obter produto por id (inclui variantes)
       operationId: obterProduto
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Produto encontrado
@@ -160,6 +200,7 @@ paths:
       tags: [Produtos]
       summary: Atualizar produto
       operationId: atualizarProduto
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -181,6 +222,7 @@ paths:
       tags: [Produtos]
       summary: Inativar produto (soft delete — ativo=false)
       operationId: inativarProduto
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "204":
           description: Produto inativado
@@ -195,6 +237,7 @@ paths:
       tags: [Variantes]
       summary: Listar variantes (SKUs) de um produto
       operationId: listarVariantesDoProduto
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Lista de variantes
@@ -210,6 +253,7 @@ paths:
       tags: [Variantes]
       summary: Criar variante (SKU) para um produto
       operationId: criarVariante
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -233,6 +277,7 @@ paths:
       tags: [Variantes]
       summary: Obter variante por id
       operationId: obterVariante
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Variante encontrada
@@ -246,6 +291,7 @@ paths:
       tags: [Variantes]
       summary: Atualizar variante (preço, cor, tamanho)
       operationId: atualizarVariante
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -265,6 +311,7 @@ paths:
       tags: [Variantes]
       summary: Inativar variante (soft delete — ativo=false)
       operationId: inativarVariante
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "204":
           description: Variante inativada
@@ -279,6 +326,7 @@ paths:
       tags: [Imagens]
       summary: Listar imagens (galeria) de um produto
       operationId: listarImagensDoProduto
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       parameters:
         - name: cor
           in: query
@@ -301,6 +349,7 @@ paths:
         `image/png` e `image/webp`, até 5MB. A primeira imagem enviada para
         uma cor é automaticamente marcada como `principal`.
       operationId: uploadImagem
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -337,6 +386,7 @@ paths:
       tags: [Imagens]
       summary: Reordenar imagem (atualizar `ordem`)
       operationId: atualizarOrdemImagem
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -358,6 +408,7 @@ paths:
       tags: [Imagens]
       summary: Remover imagem (registro em banco + arquivo físico em disco)
       operationId: removerImagem
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "204":
           description: Imagem removida
@@ -376,6 +427,7 @@ paths:
         no máximo uma principal por produto+cor (índice único parcial em
         `produto_imagem`, ver docs/data-model.md decisão #13).
       operationId: definirImagemPrincipal
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "200":
           description: Imagem definida como principal
@@ -392,6 +444,7 @@ paths:
       tags: [Estoque]
       summary: Listar saldo de estoque por variante
       operationId: listarEstoque
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -411,6 +464,7 @@ paths:
       tags: [Estoque]
       summary: Listar variantes com estoque igual ou abaixo do mínimo configurado
       operationId: listarAlertasEstoque
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Lista de variantes em alerta de estoque baixo
@@ -428,6 +482,7 @@ paths:
       tags: [Estoque]
       summary: Listar histórico de movimentações de estoque
       operationId: listarMovimentacoes
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -453,6 +508,7 @@ paths:
         endpoint é para movimentações manuais (compra, ajuste de inventário,
         devolução, perda).
       operationId: criarMovimentacao
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -479,6 +535,7 @@ paths:
       tags: [Pedidos]
       summary: Listar pedidos/vendas
       operationId: listarPedidos
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -511,6 +568,7 @@ paths:
         tiver saldo de estoque suficiente — nenhuma alteração parcial é
         persistida.
       operationId: criarPedido
+      x-roles: [ADMIN, VENDEDOR]
       requestBody:
         required: true
         content:
@@ -538,6 +596,7 @@ paths:
       tags: [Pedidos]
       summary: Obter pedido por id (com itens e pagamentos)
       operationId: obterPedido
+      x-roles: [ADMIN, VENDEDOR, ESTOQUISTA]
       responses:
         "200":
           description: Pedido encontrado
@@ -559,6 +618,7 @@ paths:
         movimentações de estoque de estorno (tipo ENTRADA, motivo DEVOLUCAO)
         para cada item, também em transação atômica.
       operationId: cancelarPedido
+      x-roles: [ADMIN, VENDEDOR]
       responses:
         "200":
           description: Pedido cancelado
@@ -581,6 +641,7 @@ paths:
       tags: [Clientes]
       summary: Listar clientes
       operationId: listarClientes
+      x-roles: [ADMIN, VENDEDOR]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -599,6 +660,7 @@ paths:
       tags: [Clientes]
       summary: Criar cliente
       operationId: criarCliente
+      x-roles: [ADMIN, VENDEDOR]
       requestBody:
         required: true
         content:
@@ -622,6 +684,7 @@ paths:
       tags: [Clientes]
       summary: Obter cliente por id
       operationId: obterCliente
+      x-roles: [ADMIN, VENDEDOR]
       responses:
         "200":
           description: Cliente encontrado
@@ -635,6 +698,7 @@ paths:
       tags: [Clientes]
       summary: Atualizar cliente
       operationId: atualizarCliente
+      x-roles: [ADMIN, VENDEDOR]
       requestBody:
         required: true
         content:
@@ -654,6 +718,7 @@ paths:
       tags: [Clientes]
       summary: Inativar cliente
       operationId: inativarCliente
+      x-roles: [ADMIN, VENDEDOR]
       responses:
         "204":
           description: Cliente inativado
@@ -666,6 +731,7 @@ paths:
       tags: [Fornecedores]
       summary: Listar fornecedores
       operationId: listarFornecedores
+      x-roles: [ADMIN, ESTOQUISTA]
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
@@ -683,6 +749,7 @@ paths:
       tags: [Fornecedores]
       summary: Criar fornecedor
       operationId: criarFornecedor
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -706,6 +773,7 @@ paths:
       tags: [Fornecedores]
       summary: Obter fornecedor por id
       operationId: obterFornecedor
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "200":
           description: Fornecedor encontrado
@@ -719,6 +787,7 @@ paths:
       tags: [Fornecedores]
       summary: Atualizar fornecedor
       operationId: atualizarFornecedor
+      x-roles: [ADMIN, ESTOQUISTA]
       requestBody:
         required: true
         content:
@@ -738,6 +807,7 @@ paths:
       tags: [Fornecedores]
       summary: Inativar fornecedor
       operationId: inativarFornecedor
+      x-roles: [ADMIN, ESTOQUISTA]
       responses:
         "204":
           description: Fornecedor inativado
@@ -750,6 +820,7 @@ paths:
       tags: [Relatorios]
       summary: Indicadores resumidos para a tela inicial (dashboard)
       operationId: obterResumoDashboard
+      x-roles: [ADMIN]
       parameters:
         - name: data_inicio
           in: query
@@ -770,6 +841,7 @@ paths:
       tags: [Relatorios]
       summary: Faturamento e volume de pedidos agregados por dia
       operationId: relatorioVendasPorPeriodo
+      x-roles: [ADMIN]
       parameters:
         - name: data_inicio
           in: query
@@ -796,6 +868,7 @@ paths:
       tags: [Relatorios]
       summary: Ranking de variantes mais vendidas por quantidade/faturamento
       operationId: relatorioProdutosMaisVendidos
+      x-roles: [ADMIN]
       parameters:
         - name: data_inicio
           in: query
@@ -821,6 +894,7 @@ paths:
       tags: [Relatorios]
       summary: Giro de estoque por variante em um período
       operationId: relatorioGiroEstoque
+      x-roles: [ADMIN]
       parameters:
         - name: data_inicio
           in: query
@@ -890,6 +964,14 @@ components:
   responses:
     NaoAutorizado:
       description: Credenciais inválidas ou token ausente/expirado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    AcessoNegado:
+      description: >
+        Usuário autenticado, mas cujo papel (RBAC) não está entre os
+        permitidos para o recurso — ver extensão `x-roles` de cada operação
+        e a tabela de RBAC em `info.description`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ProblemDetails" }

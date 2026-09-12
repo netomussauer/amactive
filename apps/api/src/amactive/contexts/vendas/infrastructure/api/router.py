@@ -28,18 +28,23 @@ from amactive.contexts.vendas.infrastructure.persistence.gateways import Catalog
 from amactive.contexts.vendas.infrastructure.persistence.repositories import (
     SqlAlchemyPedidoRepository,
 )
-from amactive.core.security import CurrentUser, get_current_user
+from amactive.core.security import CurrentUser, get_current_user, requer_papel
 from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.exceptions import ConflitoTransacional
 from amactive.shared_kernel.money import parse_money, to_money_str
 from amactive.shared_kernel.schemas import Pagination
 
-router = APIRouter(prefix="/pedidos", tags=["Pedidos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(prefix="/pedidos", tags=["Pedidos"])
 
 _MAX_TENTATIVAS_DEADLOCK = 2
 
+# Leitura (GET) é liberada a qualquer papel autenticado; escrita
+# (POST/PATCH) é restrita a ADMIN/VENDEDOR — ver matriz de permissões em
+# docs/openapi.yaml.
+_requer_escrita = requer_papel("ADMIN", "VENDEDOR")
 
-@router.get("", response_model=PedidoListResponse)
+
+@router.get("", response_model=PedidoListResponse, dependencies=[Depends(get_current_user)])
 async def listar_pedidos(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -67,7 +72,7 @@ async def listar_pedidos(
 async def criar_pedido(
     payload: CriarPedidoRequest,
     session: AsyncSession = Depends(get_db_session),
-    usuario: CurrentUser = Depends(get_current_user),
+    usuario: CurrentUser = Depends(_requer_escrita),
 ) -> PedidoDetalheResponse:
     itens = [
         ItemPedidoInput(
@@ -113,7 +118,9 @@ async def criar_pedido(
     return _pedido_detalhe_response(pedido)
 
 
-@router.get("/{pedido_id}", response_model=PedidoDetalheResponse)
+@router.get(
+    "/{pedido_id}", response_model=PedidoDetalheResponse, dependencies=[Depends(get_current_user)]
+)
 async def obter_pedido(
     pedido_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> PedidoDetalheResponse:
@@ -125,7 +132,7 @@ async def obter_pedido(
 async def cancelar_pedido(
     pedido_id: UUID,
     session: AsyncSession = Depends(get_db_session),
-    usuario: CurrentUser = Depends(get_current_user),
+    usuario: CurrentUser = Depends(_requer_escrita),
 ) -> PedidoDetalheResponse:
     pedido_repo = SqlAlchemyPedidoRepository(session)
     gateway = CatalogoEstoqueGateway(session)

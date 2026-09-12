@@ -34,15 +34,27 @@ from amactive.contexts.cadastros.infrastructure.persistence.repositories import 
     SqlAlchemyClienteRepository,
     SqlAlchemyFornecedorRepository,
 )
-from amactive.core.security import get_current_user
+from amactive.core.security import requer_papel
 from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.schemas import Pagination
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
+
+# Clientes: leitura e escrita restritas a ADMIN/VENDEDOR (ESTOQUISTA não
+# acessa este recurso — ver matriz de permissões em docs/openapi.yaml).
+_requer_acesso_clientes = requer_papel("ADMIN", "VENDEDOR")
+# Fornecedores: leitura e escrita restritas a ADMIN/ESTOQUISTA (VENDEDOR não
+# acessa este recurso).
+_requer_acesso_fornecedores = requer_papel("ADMIN", "ESTOQUISTA")
 
 
 # ── Clientes ──
-@router.get("/clientes", tags=["Clientes"], response_model=ClienteListResponse)
+@router.get(
+    "/clientes",
+    tags=["Clientes"],
+    response_model=ClienteListResponse,
+    dependencies=[Depends(_requer_acesso_clientes)],
+)
 async def listar_clientes(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -63,6 +75,7 @@ async def listar_clientes(
     tags=["Clientes"],
     response_model=ClienteResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_requer_acesso_clientes)],
 )
 async def criar_cliente(
     payload: CriarClienteRequest, session: AsyncSession = Depends(get_db_session)
@@ -74,7 +87,12 @@ async def criar_cliente(
     return _cliente_response(cliente)
 
 
-@router.get("/clientes/{cliente_id}", tags=["Clientes"], response_model=ClienteResponse)
+@router.get(
+    "/clientes/{cliente_id}",
+    tags=["Clientes"],
+    response_model=ClienteResponse,
+    dependencies=[Depends(_requer_acesso_clientes)],
+)
 async def obter_cliente(
     cliente_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> ClienteResponse:
@@ -82,7 +100,12 @@ async def obter_cliente(
     return _cliente_response(cliente)
 
 
-@router.put("/clientes/{cliente_id}", tags=["Clientes"], response_model=ClienteResponse)
+@router.put(
+    "/clientes/{cliente_id}",
+    tags=["Clientes"],
+    response_model=ClienteResponse,
+    dependencies=[Depends(_requer_acesso_clientes)],
+)
 async def atualizar_cliente(
     cliente_id: UUID,
     payload: CriarClienteRequest,
@@ -95,7 +118,12 @@ async def atualizar_cliente(
     return _cliente_response(cliente)
 
 
-@router.delete("/clientes/{cliente_id}", tags=["Clientes"], status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/clientes/{cliente_id}",
+    tags=["Clientes"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_requer_acesso_clientes)],
+)
 async def inativar_cliente(
     cliente_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> None:
@@ -104,7 +132,12 @@ async def inativar_cliente(
 
 
 # ── Fornecedores ──
-@router.get("/fornecedores", tags=["Fornecedores"], response_model=FornecedorListResponse)
+@router.get(
+    "/fornecedores",
+    tags=["Fornecedores"],
+    response_model=FornecedorListResponse,
+    dependencies=[Depends(_requer_acesso_fornecedores)],
+)
 async def listar_fornecedores(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -125,6 +158,7 @@ async def listar_fornecedores(
     tags=["Fornecedores"],
     response_model=FornecedorResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_requer_acesso_fornecedores)],
 )
 async def criar_fornecedor(
     payload: CriarFornecedorRequest, session: AsyncSession = Depends(get_db_session)
@@ -137,7 +171,10 @@ async def criar_fornecedor(
 
 
 @router.get(
-    "/fornecedores/{fornecedor_id}", tags=["Fornecedores"], response_model=FornecedorResponse
+    "/fornecedores/{fornecedor_id}",
+    tags=["Fornecedores"],
+    response_model=FornecedorResponse,
+    dependencies=[Depends(_requer_acesso_fornecedores)],
 )
 async def obter_fornecedor(
     fornecedor_id: UUID, session: AsyncSession = Depends(get_db_session)
@@ -149,7 +186,10 @@ async def obter_fornecedor(
 
 
 @router.put(
-    "/fornecedores/{fornecedor_id}", tags=["Fornecedores"], response_model=FornecedorResponse
+    "/fornecedores/{fornecedor_id}",
+    tags=["Fornecedores"],
+    response_model=FornecedorResponse,
+    dependencies=[Depends(_requer_acesso_fornecedores)],
 )
 async def atualizar_fornecedor(
     fornecedor_id: UUID,
@@ -167,6 +207,7 @@ async def atualizar_fornecedor(
     "/fornecedores/{fornecedor_id}",
     tags=["Fornecedores"],
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_requer_acesso_fornecedores)],
 )
 async def inativar_fornecedor(
     fornecedor_id: UUID, session: AsyncSession = Depends(get_db_session)

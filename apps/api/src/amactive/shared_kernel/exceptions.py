@@ -58,6 +58,16 @@ class NaoAutorizado(DomainError):
     title = "Não autorizado"
 
 
+class AcessoNegado(DomainError):
+    """Usuário autenticado (token válido), mas cujo `papel` (RBAC) não tem
+    permissão para o recurso solicitado — ver `core/security.requer_papel`
+    e a matriz de permissões em docs/openapi.yaml."""
+
+    status_code = 403
+    type_slug = "acesso-negado"
+    title = "Acesso negado"
+
+
 class PayloadMuitoGrande(DomainError):
     """Upload cujo tamanho excede o limite aceito pela aplicação (ex.: imagem
     de produto acima de 5MB — ver

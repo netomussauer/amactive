@@ -82,16 +82,26 @@ from amactive.contexts.catalogo_estoque.infrastructure.persistence.repositories 
 from amactive.contexts.catalogo_estoque.infrastructure.storage import (
     LocalDiskArmazenamentoDeImagem,
 )
-from amactive.core.security import CurrentUser, get_current_user
+from amactive.core.security import CurrentUser, get_current_user, requer_papel
 from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.money import aplicar_desconto_percentual, parse_money, to_money_str
 from amactive.shared_kernel.schemas import Pagination
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+router = APIRouter()
+
+# Leitura (GET) é liberada a qualquer papel autenticado; escrita
+# (POST/PUT/PATCH/DELETE) é restrita a ADMIN/ESTOQUISTA — ver matriz de
+# permissões em docs/openapi.yaml.
+_requer_escrita = requer_papel("ADMIN", "ESTOQUISTA")
 
 
 # ── Categorias ──
-@router.get("/categorias", tags=["Categorias"], response_model=CategoriaListResponse)
+@router.get(
+    "/categorias",
+    tags=["Categorias"],
+    response_model=CategoriaListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_categorias(
     session: AsyncSession = Depends(get_db_session),
 ) -> CategoriaListResponse:
@@ -104,6 +114,7 @@ async def listar_categorias(
     tags=["Categorias"],
     response_model=CategoriaResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def criar_categoria(
     payload: CriarCategoriaRequest, session: AsyncSession = Depends(get_db_session)
@@ -116,7 +127,12 @@ async def criar_categoria(
 
 
 # ── Produtos ──
-@router.get("/produtos", tags=["Produtos"], response_model=ProdutoListResponse)
+@router.get(
+    "/produtos",
+    tags=["Produtos"],
+    response_model=ProdutoListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_produtos(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -139,6 +155,7 @@ async def listar_produtos(
     tags=["Produtos"],
     response_model=ProdutoResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def criar_produto(
     payload: CriarProdutoRequest, session: AsyncSession = Depends(get_db_session)
@@ -154,7 +171,12 @@ async def criar_produto(
     return _produto_response(produto)
 
 
-@router.get("/produtos/{produto_id}", tags=["Produtos"], response_model=ProdutoDetalheResponse)
+@router.get(
+    "/produtos/{produto_id}",
+    tags=["Produtos"],
+    response_model=ProdutoDetalheResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def obter_produto(
     produto_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> ProdutoDetalheResponse:
@@ -171,7 +193,12 @@ async def obter_produto(
     )
 
 
-@router.put("/produtos/{produto_id}", tags=["Produtos"], response_model=ProdutoResponse)
+@router.put(
+    "/produtos/{produto_id}",
+    tags=["Produtos"],
+    response_model=ProdutoResponse,
+    dependencies=[Depends(_requer_escrita)],
+)
 async def atualizar_produto(
     produto_id: UUID,
     payload: AtualizarProdutoRequest,
@@ -190,7 +217,12 @@ async def atualizar_produto(
     return _produto_response(produto)
 
 
-@router.delete("/produtos/{produto_id}", tags=["Produtos"], status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/produtos/{produto_id}",
+    tags=["Produtos"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_requer_escrita)],
+)
 async def inativar_produto(
     produto_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> None:
@@ -200,7 +232,10 @@ async def inativar_produto(
 
 # ── Variantes ──
 @router.get(
-    "/produtos/{produto_id}/variantes", tags=["Variantes"], response_model=VarianteListResponse
+    "/produtos/{produto_id}/variantes",
+    tags=["Variantes"],
+    response_model=VarianteListResponse,
+    dependencies=[Depends(get_current_user)],
 )
 async def listar_variantes_do_produto(
     produto_id: UUID, session: AsyncSession = Depends(get_db_session)
@@ -228,7 +263,7 @@ async def criar_variante(
     produto_id: UUID,
     payload: CriarVarianteRequest,
     session: AsyncSession = Depends(get_db_session),
-    usuario: CurrentUser = Depends(get_current_user),
+    usuario: CurrentUser = Depends(_requer_escrita),
 ) -> VarianteResponse:
     # Garante que o produto exista (404 antes de tentar criar a variante).
     produto = await ObterProdutoQuery(SqlAlchemyProdutoRepository(session)).executar(produto_id)
@@ -251,7 +286,12 @@ async def criar_variante(
     )
 
 
-@router.get("/variantes/{variante_id}", tags=["Variantes"], response_model=VarianteResponse)
+@router.get(
+    "/variantes/{variante_id}",
+    tags=["Variantes"],
+    response_model=VarianteResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def obter_variante(
     variante_id: UUID, session: AsyncSession = Depends(get_db_session)
 ) -> VarianteResponse:
@@ -264,7 +304,12 @@ async def obter_variante(
     )
 
 
-@router.put("/variantes/{variante_id}", tags=["Variantes"], response_model=VarianteResponse)
+@router.put(
+    "/variantes/{variante_id}",
+    tags=["Variantes"],
+    response_model=VarianteResponse,
+    dependencies=[Depends(_requer_escrita)],
+)
 async def atualizar_variante(
     variante_id: UUID,
     payload: AtualizarVarianteRequest,
@@ -288,7 +333,10 @@ async def atualizar_variante(
 
 
 @router.delete(
-    "/variantes/{variante_id}", tags=["Variantes"], status_code=status.HTTP_204_NO_CONTENT
+    "/variantes/{variante_id}",
+    tags=["Variantes"],
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def inativar_variante(
     variante_id: UUID, session: AsyncSession = Depends(get_db_session)
@@ -303,6 +351,7 @@ async def inativar_variante(
     tags=["Imagens"],
     response_model=ImagemResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def upload_imagem(
     produto_id: UUID,
@@ -323,7 +372,12 @@ async def upload_imagem(
     return _imagem_response(imagem)
 
 
-@router.get("/produtos/{produto_id}/imagens", tags=["Imagens"], response_model=ImagemListResponse)
+@router.get(
+    "/produtos/{produto_id}/imagens",
+    tags=["Imagens"],
+    response_model=ImagemListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_imagens_do_produto(
     produto_id: UUID,
     cor: str | None = None,
@@ -339,6 +393,7 @@ async def listar_imagens_do_produto(
     "/produtos/{produto_id}/imagens/{imagem_id}/principal",
     tags=["Imagens"],
     response_model=ImagemResponse,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def definir_imagem_principal(
     produto_id: UUID, imagem_id: UUID, session: AsyncSession = Depends(get_db_session)
@@ -351,7 +406,10 @@ async def definir_imagem_principal(
 
 
 @router.patch(
-    "/produtos/{produto_id}/imagens/{imagem_id}", tags=["Imagens"], response_model=ImagemResponse
+    "/produtos/{produto_id}/imagens/{imagem_id}",
+    tags=["Imagens"],
+    response_model=ImagemResponse,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def atualizar_ordem_imagem(
     produto_id: UUID,
@@ -370,6 +428,7 @@ async def atualizar_ordem_imagem(
     "/produtos/{produto_id}/imagens/{imagem_id}",
     tags=["Imagens"],
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(_requer_escrita)],
 )
 async def remover_imagem(
     produto_id: UUID, imagem_id: UUID, session: AsyncSession = Depends(get_db_session)
@@ -381,7 +440,12 @@ async def remover_imagem(
 
 
 # ── Estoque ──
-@router.get("/estoque", tags=["Estoque"], response_model=EstoqueListResponse)
+@router.get(
+    "/estoque",
+    tags=["Estoque"],
+    response_model=EstoqueListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_estoque(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -397,7 +461,12 @@ async def listar_estoque(
     )
 
 
-@router.get("/estoque/alertas", tags=["Estoque"], response_model=EstoqueAlertaListResponse)
+@router.get(
+    "/estoque/alertas",
+    tags=["Estoque"],
+    response_model=EstoqueAlertaListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_alertas_estoque(
     session: AsyncSession = Depends(get_db_session),
 ) -> EstoqueAlertaListResponse:
@@ -405,7 +474,12 @@ async def listar_alertas_estoque(
     return EstoqueAlertaListResponse(data=[_estoque_response(e) for e in estoques])
 
 
-@router.get("/estoque/movimentacoes", tags=["Estoque"], response_model=MovimentacaoListResponse)
+@router.get(
+    "/estoque/movimentacoes",
+    tags=["Estoque"],
+    response_model=MovimentacaoListResponse,
+    dependencies=[Depends(get_current_user)],
+)
 async def listar_movimentacoes(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -431,7 +505,7 @@ async def listar_movimentacoes(
 async def criar_movimentacao(
     payload: CriarMovimentacaoRequest,
     session: AsyncSession = Depends(get_db_session),
-    usuario: CurrentUser = Depends(get_current_user),
+    usuario: CurrentUser = Depends(_requer_escrita),
 ) -> MovimentacaoResponse:
     variante_repo = SqlAlchemyVarianteRepository(session)
     movimentacao_repo = SqlAlchemyMovimentacaoRepository(session)

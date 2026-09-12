@@ -1,13 +1,11 @@
-"""Segurança cross-cutting: hashing de senha (bcrypt) e JWT (PyJWT).
+"""Segurança cross-cutting: hashing de senha (bcrypt), JWT (PyJWT) e
+autorização por papel (RBAC).
 
 TODO (Identidade & Acesso — ver docs/SDD.md ADR-007, escopo item 6 do pedido
 de implementação): esta é uma autenticação **mínima e stateless** suficiente
 para o MVP local — o suficiente para satisfazer a rastreabilidade obrigatória
 de `usuario_id` em `pedido`/`movimentacao_estoque`. NÃO implementado (ok para
 uma fase futura, não bloqueia o MVP local):
-  - Autorização por papel (RBAC) por endpoint (ADMIN/VENDEDOR/ESTOQUISTA) —
-    hoje qualquer usuário autenticado (token válido) pode chamar qualquer
-    endpoint protegido.
   - Revogação de token / refresh token / logout.
   - Verificação de `usuario.ativo` a cada request (o claim do JWT não é
     revalidado contra o banco em cada chamada — apenas no login). Um usuário
@@ -19,6 +17,7 @@ uma fase futura, não bloqueia o MVP local):
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -28,7 +27,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from amactive.core.config import settings
-from amactive.shared_kernel.exceptions import NaoAutorizado
+from amactive.shared_kernel.exceptions import AcessoNegado, NaoAutorizado
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -93,3 +92,35 @@ async def get_current_user(
         email=payload.get("email", ""),
         papel=payload.get("papel", ""),
     )
+
+
+def requer_papel(*papeis_permitidos: str) -> Callable[..., Awaitable[CurrentUser]]:
+    """Factory de dependency do FastAPI que restringe um endpoint (ou grupo
+    de endpoints) a um subconjunto de papéis (RBAC — ver matriz de permissões
+    em docs/openapi.yaml).
+
+    Reaproveita `get_current_user` internamente (autenticação continua
+    obrigatória) e levanta `AcessoNegado` (403) se `current_user.papel` não
+    estiver entre `papeis_permitidos`.
+
+    Uso: `Depends(requer_papel("ADMIN", "ESTOQUISTA"))` — como dependency de
+    um endpoint específico (`dependencies=[...]` do decorator) ou como o
+    próprio parâmetro que injeta o `CurrentUser`, quando o handler também
+    precisa do usuário autenticado (ex.: para gravar `usuario_id`).
+
+    Para endpoints que qualquer papel autenticado pode acessar (tipicamente
+    leituras/GET), não use esta factory — a autenticação sozinha já é
+    suficiente, então use `Depends(get_current_user)` diretamente.
+    """
+    permitidos = frozenset(papeis_permitidos)
+
+    async def _verificar_papel(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> CurrentUser:
+        if current_user.papel not in permitidos:
+            raise AcessoNegado(
+                f"Este recurso requer um dos papéis: {', '.join(sorted(permitidos))}."
+            )
+        return current_user
+
+    return _verificar_papel

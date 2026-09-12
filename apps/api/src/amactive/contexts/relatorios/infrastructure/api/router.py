@@ -19,11 +19,13 @@ from amactive.contexts.relatorios.infrastructure.api.schemas import (
 from amactive.contexts.relatorios.infrastructure.persistence.repository import (
     RelatoriosRepository,
 )
-from amactive.core.security import get_current_user
+from amactive.core.security import requer_papel
 from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.money import to_money_str
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+# Relatórios/Dashboard são restritos a ADMIN — ver matriz de permissões em
+# docs/openapi.yaml.
+router = APIRouter(dependencies=[Depends(requer_papel("ADMIN"))])
 
 
 def _inicio_dia(d: date | None) -> datetime | None:
