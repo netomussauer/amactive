@@ -106,3 +106,12 @@ export const CategoriaResponseSchema = z.object({
 export type Categoria = z.infer<typeof CategoriaResponseSchema>
 
 export const CategoriaListResponseSchema = listResponseSchema(CategoriaResponseSchema)
+export type CategoriaListResponse = z.infer<typeof CategoriaListResponseSchema>
+
+// Criação de categoria a partir do form de produto (ver docs/openapi.yaml
+// CriarCategoriaRequest, tag "Categorias") — nome/slug são UNIQUE no banco;
+// o slug é gerado pelo backend (slugify), o form só envia o nome.
+export const CriarCategoriaSchema = z.object({
+  nome: z.string().min(2, 'Informe o nome da categoria').max(100),
+})
+export type CriarCategoriaDTO = z.infer<typeof CriarCategoriaSchema>

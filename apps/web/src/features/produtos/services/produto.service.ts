@@ -7,10 +7,12 @@ import {
   VarianteListResponseSchema,
   VarianteResponseSchema,
   CategoriaListResponseSchema,
+  CategoriaResponseSchema,
   type CriarProdutoDTO,
   type AtualizarProdutoDTO,
   type CriarVarianteDTO,
   type AtualizarVarianteDTO,
+  type CriarCategoriaDTO,
 } from '../schemas/produto.schema'
 import type { ProdutoFilter } from '../types/produto.types'
 
@@ -78,6 +80,14 @@ export const produtoService = {
   async listCategorias() {
     const raw = await apiClient<unknown>('/categorias')
     return CategoriaListResponseSchema.parse(raw)
+  },
+
+  async criarCategoria(payload: CriarCategoriaDTO) {
+    const raw = await apiClient<unknown>('/categorias', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return CategoriaResponseSchema.parse(raw)
   },
 
   // Busca composta usada pelo PDV: /estoque?sku= resolve o variante_id pelo

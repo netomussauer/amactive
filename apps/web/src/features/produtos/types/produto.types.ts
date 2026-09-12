@@ -5,10 +5,12 @@ export type {
   Variante,
   VarianteListResponse,
   Categoria,
+  CategoriaListResponse,
   CriarProdutoDTO,
   AtualizarProdutoDTO,
   CriarVarianteDTO,
   AtualizarVarianteDTO,
+  CriarCategoriaDTO,
   Tamanho,
 } from '../schemas/produto.schema'
 
