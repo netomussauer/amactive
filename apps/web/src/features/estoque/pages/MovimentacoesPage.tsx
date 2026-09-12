@@ -7,6 +7,7 @@ import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { TableSkeleton } from '@/shared/components/ui/Skeleton'
 import { Badge } from '@/shared/components/ui/Badge'
 import { formatDateTime } from '@/shared/lib/format'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { MovimentacaoModal } from '../components/MovimentacaoModal'
 import { useMovimentacoes } from '../hooks/useMovimentacoes'
 import type { TipoMovimentacao } from '../types/estoque.types'
@@ -18,6 +19,7 @@ const tipoTone: Record<TipoMovimentacao, 'ok' | 'critico' | 'neutral'> = {
 }
 
 export function MovimentacoesPage() {
+  const { podeRegistrarMovimentacaoEstoque } = usePermissoes()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [tipo, setTipo] = useState('')
   const [page, setPage] = useState(1)
@@ -29,10 +31,12 @@ export function MovimentacoesPage() {
       title="Movimentações de estoque"
       description="Histórico de entradas, saídas e ajustes manuais de estoque."
       actions={
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Nova movimentação
-        </Button>
+        podeRegistrarMovimentacaoEstoque ? (
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Nova movimentação
+          </Button>
+        ) : undefined
       }
     >
       <div className="mb-4 max-w-xs">

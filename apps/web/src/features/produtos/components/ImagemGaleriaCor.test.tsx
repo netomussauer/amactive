@@ -56,7 +56,7 @@ describe('ImagemGaleriaCor', () => {
   })
 
   it('exibe estado vazio quando a cor ainda não tem imagens', () => {
-    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} />)
+    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} podeEditar />)
     expect(screen.getByText(/nenhuma imagem cadastrada para esta cor/i)).toBeInTheDocument()
   })
 
@@ -66,6 +66,7 @@ describe('ImagemGaleriaCor', () => {
         produtoId="produto-1"
         cor="Coral"
         imagens={[makeImagem({ id: 'a', principal: true }), makeImagem({ id: 'b', ordem: 1 })]}
+        podeEditar
       />,
     )
     expect(screen.getByLabelText(/imagem principal desta cor/i)).toBeInTheDocument()
@@ -75,7 +76,7 @@ describe('ImagemGaleriaCor', () => {
 
   it('envia um arquivo válido para upload com a cor correta', async () => {
     const user = userEvent.setup()
-    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} />)
+    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} podeEditar />)
 
     const input = screen.getByLabelText(/enviar imagem para a cor coral/i, { selector: 'input' })
     await user.upload(input, makeFile())
@@ -84,7 +85,7 @@ describe('ImagemGaleriaCor', () => {
   })
 
   it('bloqueia upload de arquivo inválido e mostra a mensagem de erro sem chamar a API', () => {
-    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} />)
+    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[]} podeEditar />)
 
     // fireEvent (em vez de userEvent.upload) simula um arquivo que não bate
     // com o `accept` do input — cenário real via drag-and-drop ou seletor
@@ -98,7 +99,7 @@ describe('ImagemGaleriaCor', () => {
 
   it('define uma imagem como principal ao clicar na ação', async () => {
     const user = userEvent.setup()
-    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[makeImagem({ id: 'imagem-9' })]} />)
+    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[makeImagem({ id: 'imagem-9' })]} podeEditar />)
 
     await user.click(screen.getByRole('button', { name: /definir imagem 1 da cor coral como principal/i }))
 
@@ -109,7 +110,7 @@ describe('ImagemGaleriaCor', () => {
     const user = userEvent.setup()
     vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
 
-    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[makeImagem({ id: 'imagem-9' })]} />)
+    render(<ImagemGaleriaCor produtoId="produto-1" cor="Coral" imagens={[makeImagem({ id: 'imagem-9' })]} podeEditar />)
 
     const botaoRemover = screen.getByRole('button', { name: /remover imagem 1 da cor coral/i })
     await user.click(botaoRemover)
@@ -125,9 +126,28 @@ describe('ImagemGaleriaCor', () => {
         produtoId="produto-1"
         cor="Coral"
         imagens={[makeImagem({ id: 'a', principal: true }), makeImagem({ id: 'b', ordem: 1 })]}
+        podeEditar
       />,
     )
     const results = await axe(container)
     expect(results).toHaveNoViolations()
+  })
+
+  it('oculta upload e ações de escrita (reordenar/definir principal/remover) quando podeEditar é false', () => {
+    render(
+      <ImagemGaleriaCor
+        produtoId="produto-1"
+        cor="Coral"
+        imagens={[makeImagem({ id: 'a', principal: true }), makeImagem({ id: 'b', ordem: 1 })]}
+        podeEditar={false}
+      />,
+    )
+
+    expect(screen.queryByLabelText(/enviar imagem para a cor coral/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /mover imagem/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /definir imagem .* como principal/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /remover imagem/i })).not.toBeInTheDocument()
+    // a imagem principal continua visível — é leitura, não escrita
+    expect(screen.getByLabelText(/imagem principal desta cor/i)).toBeInTheDocument()
   })
 })

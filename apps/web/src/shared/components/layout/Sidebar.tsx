@@ -12,16 +12,22 @@ import {
 } from 'lucide-react'
 import { routes } from '@/shared/lib/routes'
 import { cn } from '@/shared/lib/utils'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
+import type { Permissoes } from '@/shared/lib/permissoes'
 
-const navItems = [
-  { to: routes.dashboard, label: 'Dashboard', icon: LayoutDashboard },
-  { to: routes.pdv, label: 'PDV', icon: ShoppingCart },
+// `permissao` ausente = leitura livre aos três papéis (Pedidos, Produtos,
+// Estoque) — o item some apenas quando o papel não tem NENHUM acesso ao
+// recurso. Ver shared/lib/permissoes.ts para o racional de cada flag e
+// app/router.tsx para o guard de rota correspondente.
+const navItems: Array<{ to: string; label: string; icon: typeof LayoutDashboard; permissao?: keyof Permissoes }> = [
+  { to: routes.dashboard, label: 'Dashboard', icon: LayoutDashboard, permissao: 'podeVerRelatorios' },
+  { to: routes.pdv, label: 'PDV', icon: ShoppingCart, permissao: 'podeVenderNoPdv' },
   { to: routes.pedidos, label: 'Pedidos', icon: Receipt },
   { to: routes.produtos, label: 'Produtos', icon: Shirt },
   { to: routes.estoque, label: 'Estoque', icon: Boxes },
-  { to: routes.clientes, label: 'Clientes', icon: Users },
-  { to: routes.fornecedores, label: 'Fornecedores', icon: Truck },
-  { to: routes.relatorios, label: 'Relatórios', icon: BarChart3 },
+  { to: routes.clientes, label: 'Clientes', icon: Users, permissao: 'podeGerenciarClientes' },
+  { to: routes.fornecedores, label: 'Fornecedores', icon: Truck, permissao: 'podeGerenciarFornecedores' },
+  { to: routes.relatorios, label: 'Relatórios', icon: BarChart3, permissao: 'podeVerRelatorios' },
 ]
 
 type Props = {
@@ -30,6 +36,9 @@ type Props = {
 }
 
 export function Sidebar({ mobileOpen = false, onCloseMobile }: Props) {
+  const permissoes = usePermissoes()
+  const itensVisiveis = navItems.filter((item) => !item.permissao || permissoes[item.permissao])
+
   return (
     <>
       {mobileOpen && (
@@ -59,7 +68,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: Props) {
           </button>
         </div>
         <ul className="flex-1 space-y-1 overflow-y-auto p-3">
-          {navItems.map(({ to, label, icon: Icon }) => (
+          {itensVisiveis.map(({ to, label, icon: Icon }) => (
             <li key={to}>
               <NavLink
                 to={to}

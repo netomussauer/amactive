@@ -35,7 +35,7 @@ describe('GaleriaImagensProduto', () => {
   it('mostra estado vazio quando o produto não tem cores ativas nem imagens', () => {
     mockData = { data: [] }
     mockIsLoading = false
-    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={[]} />)
+    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={[]} podeEditar />)
 
     expect(screen.getByText(/nenhuma cor disponível/i)).toBeInTheDocument()
   })
@@ -43,7 +43,7 @@ describe('GaleriaImagensProduto', () => {
   it('agrupa as imagens por cor e inclui cores ativas sem imagem ainda', () => {
     mockData = { data: [makeImagem({ cor: 'Coral' }), makeImagem({ id: 'img-2', cor: 'Coral', ordem: 1 })] }
     mockIsLoading = false
-    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={['Coral', 'Preto']} />)
+    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={['Coral', 'Preto']} podeEditar />)
 
     expect(screen.getByTestId('galeria-Coral')).toHaveTextContent('Coral — 2 imagem(ns)')
     expect(screen.getByTestId('galeria-Preto')).toHaveTextContent('Preto — 0 imagem(ns)')
@@ -52,7 +52,7 @@ describe('GaleriaImagensProduto', () => {
   it('exibe indicador de carregamento enquanto busca as imagens', () => {
     mockData = undefined
     mockIsLoading = true
-    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={['Coral']} />)
+    render(<GaleriaImagensProduto produtoId="produto-1" coresAtivas={['Coral']} podeEditar />)
 
     expect(screen.getByRole('status')).toBeInTheDocument()
   })

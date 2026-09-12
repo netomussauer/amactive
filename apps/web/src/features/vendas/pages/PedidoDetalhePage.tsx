@@ -3,6 +3,7 @@ import { PageWrapper } from '@/shared/components/layout/PageWrapper'
 import { Button } from '@/shared/components/ui/Button'
 import { Spinner } from '@/shared/components/ui/Spinner'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { PedidoDetalheCard } from '../components/PedidoDetalheCard'
 import { usePedido } from '../hooks/usePedido'
 import { useCancelarPedido } from '../hooks/useCancelarPedido'
@@ -10,6 +11,7 @@ import { useCancelarPedido } from '../hooks/useCancelarPedido'
 // Detalhe do pedido, com ação de cancelamento.
 export function PedidoDetalhePage() {
   const { pedidoId } = useParams<{ pedidoId: string }>()
+  const { podeVenderNoPdv } = usePermissoes()
   const { data: pedido, isLoading } = usePedido(pedidoId)
   const { mutate: cancelar, isPending } = useCancelarPedido()
 
@@ -29,7 +31,7 @@ export function PedidoDetalhePage() {
     )
   }
 
-  const podeCancelar = pedido.status !== 'CANCELADO'
+  const podeCancelar = pedido.status !== 'CANCELADO' && podeVenderNoPdv
 
   return (
     <PageWrapper

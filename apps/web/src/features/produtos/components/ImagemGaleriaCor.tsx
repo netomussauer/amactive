@@ -16,6 +16,8 @@ type Props = {
   produtoId: string
   cor: string
   imagens: Imagem[]
+  /** Escrita de catálogo (usePermissoes().podeGerenciarCatalogo) — sem ela, só a grade de imagens é exibida (leitura). */
+  podeEditar: boolean
 }
 
 // Galeria de imagens de UMA cor: miniaturas + ações (principal, reordenar,
@@ -23,7 +25,7 @@ type Props = {
 // bater exatamente com uma cor de variante ativa do produto — o backend
 // responde 422 com uma mensagem clara quando não bate, exibida abaixo do
 // dropzone (ver docs/openapi.yaml POST /produtos/{produtoId}/imagens).
-export function ImagemGaleriaCor({ produtoId, cor, imagens }: Props) {
+export function ImagemGaleriaCor({ produtoId, cor, imagens, podeEditar }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const [erroArquivo, setErroArquivo] = useState<string | null>(null)
@@ -96,101 +98,107 @@ export function ImagemGaleriaCor({ produtoId, cor, imagens }: Props) {
                   Principal
                 </span>
               )}
-              <div className="flex items-center justify-between gap-1 bg-bg-subtle p-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Mover imagem ${index + 1} da cor ${cor} para cima`}
-                  disabled={index === 0}
-                  onClick={() => handleMover(index, -1)}
-                >
-                  <ChevronUp className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                {!imagem.principal && (
+              {podeEditar && (
+                <div className="flex items-center justify-between gap-1 bg-bg-subtle p-1">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={`Definir imagem ${index + 1} da cor ${cor} como principal`}
-                    onClick={() => definirPrincipal(imagem.id)}
+                    aria-label={`Mover imagem ${index + 1} da cor ${cor} para cima`}
+                    disabled={index === 0}
+                    onClick={() => handleMover(index, -1)}
                   >
-                    <Star className="h-4 w-4" aria-hidden="true" />
+                    <ChevronUp className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Mover imagem ${index + 1} da cor ${cor} para baixo`}
-                  disabled={index === imagensOrdenadas.length - 1}
-                  onClick={() => handleMover(index, 1)}
-                >
-                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Remover imagem ${index + 1} da cor ${cor}`}
-                  onClick={() => handleRemover(imagem)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </div>
+                  {!imagem.principal && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Definir imagem ${index + 1} da cor ${cor} como principal`}
+                      onClick={() => definirPrincipal(imagem.id)}
+                    >
+                      <Star className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Mover imagem ${index + 1} da cor ${cor} para baixo`}
+                    disabled={index === imagensOrdenadas.length - 1}
+                    onClick={() => handleMover(index, 1)}
+                  >
+                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remover imagem ${index + 1} da cor ${cor}`}
+                    onClick={() => handleRemover(imagem)}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      <div
-        onDrop={handleDrop}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setIsDragOver(true)
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        className={cn(
-          'rounded-md border border-dashed border-border p-4 text-center transition-colors',
-          isDragOver && 'border-primary bg-primary-subtle',
-        )}
-      >
-        <button
-          type="button"
-          aria-label={`Enviar imagem para a cor ${cor}`}
-          aria-busy={isUploading}
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            'flex w-full flex-col items-center justify-center gap-1 text-xs text-text-muted',
-            isDragOver && 'text-primary',
-          )}
-        >
-          <Upload className="h-4 w-4" aria-hidden="true" />
-          <span>{isUploading ? 'Enviando...' : `Arraste uma imagem ou clique para enviar (cor: ${cor})`}</span>
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          aria-label={`Enviar imagem para a cor ${cor}`}
-          accept="image/jpeg,image/png,image/webp"
-          multiple
-          className="sr-only"
-          onChange={(event) => {
-            handleFiles(event.target.files)
-            event.target.value = ''
-          }}
-        />
-      </div>
+      {podeEditar && (
+        <>
+          <div
+            onDrop={handleDrop}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setIsDragOver(true)
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            className={cn(
+              'rounded-md border border-dashed border-border p-4 text-center transition-colors',
+              isDragOver && 'border-primary bg-primary-subtle',
+            )}
+          >
+            <button
+              type="button"
+              aria-label={`Enviar imagem para a cor ${cor}`}
+              aria-busy={isUploading}
+              onClick={() => inputRef.current?.click()}
+              className={cn(
+                'flex w-full flex-col items-center justify-center gap-1 text-xs text-text-muted',
+                isDragOver && 'text-primary',
+              )}
+            >
+              <Upload className="h-4 w-4" aria-hidden="true" />
+              <span>{isUploading ? 'Enviando...' : `Arraste uma imagem ou clique para enviar (cor: ${cor})`}</span>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              aria-label={`Enviar imagem para a cor ${cor}`}
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="sr-only"
+              onChange={(event) => {
+                handleFiles(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </div>
 
-      {erroArquivo && (
-        <p role="alert" className="text-xs text-danger">
-          {erroArquivo}
-        </p>
-      )}
-      {erroUpload && (
-        <p role="alert" className="text-xs text-danger">
-          {getErrorMessage(erroUpload)}
-        </p>
+          {erroArquivo && (
+            <p role="alert" className="text-xs text-danger">
+              {erroArquivo}
+            </p>
+          )}
+          {erroUpload && (
+            <p role="alert" className="text-xs text-danger">
+              {getErrorMessage(erroUpload)}
+            </p>
+          )}
+        </>
       )}
     </div>
   )

@@ -4,12 +4,14 @@ import { Plus, Search } from 'lucide-react'
 import { PageWrapper } from '@/shared/components/layout/PageWrapper'
 import { Button, Input, Pagination } from '@/shared/components/ui'
 import { useDebounce } from '@/shared/hooks/useDebounce'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { routes } from '@/shared/lib/routes'
 import { ProdutoTable } from '../components/ProdutoTable'
 import { useProdutos } from '../hooks/useProdutos'
 
 export function ProdutosListPage() {
   const navigate = useNavigate()
+  const { podeGerenciarCatalogo } = usePermissoes()
   const [busca, setBusca] = useState('')
   const [page, setPage] = useState(1)
   const buscaDebounced = useDebounce(busca)
@@ -21,10 +23,12 @@ export function ProdutosListPage() {
       title="Produtos"
       description="Catálogo de produtos e variantes (SKUs) da AMACTIVE."
       actions={
-        <Button onClick={() => navigate(routes.produtoNovo)}>
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Novo produto
-        </Button>
+        podeGerenciarCatalogo ? (
+          <Button onClick={() => navigate(routes.produtoNovo)}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Novo produto
+          </Button>
+        ) : undefined
       }
     >
       <div className="mb-4 max-w-sm">

@@ -1,9 +1,12 @@
-import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { lazy, Suspense, type ReactNode } from 'react'
+import { createBrowserRouter } from 'react-router-dom'
 import { AuthGuard } from './AuthGuard'
+import { RoleGuard } from './RoleGuard'
+import { RootRedirect } from './RootRedirect'
 import { AuthLayout } from '@/shared/components/layout/AuthLayout'
 import { Spinner } from '@/shared/components/ui/Spinner'
 import { routes } from '@/shared/lib/routes'
+import type { Permissoes } from '@/shared/lib/permissoes'
 
 // Code splitting por rota — cada página de feature só entra no bundle quando
 // a rota é visitada. Ver docs/frontend-architecture.md §6.
@@ -64,8 +67,15 @@ function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<PageFallback />}>{element}</Suspense>
 }
 
+// Combina o guard de papel (RBAC, ver app/RoleGuard.tsx) com o Suspense do
+// code-splitting por rota. Usado nas páginas cujo acesso completo — não só
+// ações de escrita — é restrito a um subconjunto de papéis.
+function withRole(permissao: keyof Permissoes, element: ReactNode) {
+  return withSuspense(<RoleGuard permissao={permissao}>{element}</RoleGuard>)
+}
+
 export const router = createBrowserRouter([
-  { path: '/', element: <Navigate to={routes.dashboard} replace /> },
+  { path: '/', element: <AuthGuard><RootRedirect /></AuthGuard> },
   { path: routes.login, element: withSuspense(<LoginPage />) },
   {
     element: (
@@ -74,22 +84,40 @@ export const router = createBrowserRouter([
       </AuthGuard>
     ),
     children: [
-      { path: routes.dashboard, element: withSuspense(<DashboardPage />) },
+      // Dashboard/Relatórios — leitura restrita a ADMIN (ver docs/openapi.yaml, x-roles: [ADMIN]).
+      { path: routes.dashboard, element: withRole('podeVerRelatorios', <DashboardPage />) },
+      { path: routes.relatorios, element: withRole('podeVerRelatorios', <RelatoriosPage />) },
+
+      // Produtos/Estoque — leitura livre aos três papéis; ações de escrita
+      // são condicionadas inline dentro de cada página/componente (ver
+      // shared/hooks/usePermissoes.ts). "Novo produto" é a exceção: é uma
+      // página só de escrita, então o guard cobre a rota inteira.
       { path: routes.produtos, element: withSuspense(<ProdutosListPage />) },
-      { path: routes.produtoNovo, element: withSuspense(<ProdutoNovoPage />) },
+      { path: routes.produtoNovo, element: withRole('podeGerenciarCatalogo', <ProdutoNovoPage />) },
       { path: '/produtos/:produtoId', element: withSuspense(<ProdutoDetalhePage />) },
       { path: routes.estoque, element: withSuspense(<EstoquePage />) },
       { path: routes.estoqueMovimentacoes, element: withSuspense(<MovimentacoesPage />) },
-      { path: routes.pdv, element: withSuspense(<PdvPage />) },
+
+      // PDV — página inteira é o fluxo de criar pedido; ESTOQUISTA não pode
+      // nem abri-la (leitura de Pedidos continua livre, ver rotas abaixo).
+      { path: routes.pdv, element: withRole('podeVenderNoPdv', <PdvPage />) },
       { path: routes.pedidos, element: withSuspense(<PedidosListPage />) },
       { path: '/vendas/pedidos/:pedidoId', element: withSuspense(<PedidoDetalhePage />) },
-      { path: routes.clientes, element: withSuspense(<ClientesListPage />) },
-      { path: routes.clienteNovo, element: withSuspense(<ClienteNovoPage />) },
-      { path: '/clientes/:clienteId', element: withSuspense(<ClienteDetalhePage />) },
-      { path: routes.fornecedores, element: withSuspense(<FornecedoresListPage />) },
-      { path: routes.fornecedorNovo, element: withSuspense(<FornecedorNovoPage />) },
-      { path: '/fornecedores/:fornecedorId', element: withSuspense(<FornecedorDetalhePage />) },
-      { path: routes.relatorios, element: withSuspense(<RelatoriosPage />) },
+
+      // Clientes — ESTOQUISTA não tem leitura alguma do recurso (ver
+      // docs/openapi.yaml, x-roles: [ADMIN, VENDEDOR]) — guarda a rota inteira.
+      { path: routes.clientes, element: withRole('podeGerenciarClientes', <ClientesListPage />) },
+      { path: routes.clienteNovo, element: withRole('podeGerenciarClientes', <ClienteNovoPage />) },
+      { path: '/clientes/:clienteId', element: withRole('podeGerenciarClientes', <ClienteDetalhePage />) },
+
+      // Fornecedores — VENDEDOR não tem leitura alguma do recurso (ver
+      // docs/openapi.yaml, x-roles: [ADMIN, ESTOQUISTA]) — guarda a rota inteira.
+      { path: routes.fornecedores, element: withRole('podeGerenciarFornecedores', <FornecedoresListPage />) },
+      { path: routes.fornecedorNovo, element: withRole('podeGerenciarFornecedores', <FornecedorNovoPage />) },
+      {
+        path: '/fornecedores/:fornecedorId',
+        element: withRole('podeGerenciarFornecedores', <FornecedorDetalhePage />),
+      },
     ],
   },
   {

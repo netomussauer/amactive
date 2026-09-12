@@ -10,12 +10,14 @@ type Props = {
   produtoId: string
   /** Cores das variantes ATIVAS do produto — só elas aceitam upload (ver docs/openapi.yaml, 422 se a cor não bater). */
   coresAtivas: string[]
+  /** Escrita de catálogo (usePermissoes().podeGerenciarCatalogo) — oculta upload/reordenar/definir principal/remover para quem só tem leitura (ex: VENDEDOR). */
+  podeEditar: boolean
 }
 
 // Seção "Galeria de imagens" da página de detalhe do produto, agrupada por
 // cor. Também serve para adicionar imagens a produtos já existentes, não só
 // recém-criados.
-export function GaleriaImagensProduto({ produtoId, coresAtivas }: Props) {
+export function GaleriaImagensProduto({ produtoId, coresAtivas, podeEditar }: Props) {
   const { data, isLoading } = useImagensDoProduto(produtoId)
 
   const imagensPorCor = useMemo(() => {
@@ -52,7 +54,13 @@ export function GaleriaImagensProduto({ produtoId, coresAtivas }: Props) {
       ) : (
         <div className="space-y-4">
           {coresParaExibir.map((cor) => (
-            <ImagemGaleriaCor key={cor} produtoId={produtoId} cor={cor} imagens={imagensPorCor.get(cor) ?? []} />
+            <ImagemGaleriaCor
+              key={cor}
+              produtoId={produtoId}
+              cor={cor}
+              imagens={imagensPorCor.get(cor) ?? []}
+              podeEditar={podeEditar}
+            />
           ))}
         </div>
       )}

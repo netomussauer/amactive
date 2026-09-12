@@ -11,6 +11,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from 
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { Spinner } from '@/shared/components/ui/Spinner'
 import { PrecoPromocional } from '@/shared/components/ui/PrecoPromocional'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { ProdutoCard } from '../components/ProdutoCard'
 import { ProdutoForm } from '../components/ProdutoForm'
 import { VarianteForm } from '../components/VarianteForm'
@@ -27,6 +28,7 @@ type LocationState = { fromCadastro?: boolean } | null | undefined
 export function ProdutoDetalhePage() {
   const { produtoId } = useParams<{ produtoId: string }>()
   const location = useLocation()
+  const { podeGerenciarCatalogo } = usePermissoes()
   const [isEditing, setIsEditing] = useState(false)
   const [isVarianteModalOpen, setIsVarianteModalOpen] = useState(false)
 
@@ -61,13 +63,15 @@ export function ProdutoDetalhePage() {
       title={produto.nome}
       description="Detalhe do produto e suas variantes (SKUs)."
       actions={
-        <Button variant="outline" onClick={() => setIsEditing((prev) => !prev)}>
-          {isEditing ? 'Cancelar edição' : 'Editar produto'}
-        </Button>
+        podeGerenciarCatalogo ? (
+          <Button variant="outline" onClick={() => setIsEditing((prev) => !prev)}>
+            {isEditing ? 'Cancelar edição' : 'Editar produto'}
+          </Button>
+        ) : undefined
       }
     >
       <div className="space-y-6">
-        {isEditing ? (
+        {isEditing && podeGerenciarCatalogo ? (
           <Card className="max-w-2xl">
             <CardHeader>
               <CardTitle>Editar produto</CardTitle>
@@ -92,10 +96,12 @@ export function ProdutoDetalhePage() {
         <Card>
           <CardHeader>
             <CardTitle>Variantes (SKUs)</CardTitle>
-            <Button size="sm" onClick={() => setIsVarianteModalOpen(true)}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nova variante
-            </Button>
+            {podeGerenciarCatalogo && (
+              <Button size="sm" onClick={() => setIsVarianteModalOpen(true)}>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Nova variante
+              </Button>
+            )}
           </CardHeader>
 
           {produto.variantes.length === 0 ? (
@@ -134,7 +140,7 @@ export function ProdutoDetalhePage() {
                       <Badge tone={variante.ativo ? 'ok' : 'neutral'}>{variante.ativo ? 'Ativa' : 'Inativa'}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {variante.ativo && (
+                      {variante.ativo && podeGerenciarCatalogo && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -165,17 +171,20 @@ export function ProdutoDetalhePage() {
         <GaleriaImagensProduto
           produtoId={produto.id}
           coresAtivas={Array.from(new Set(produto.variantes.filter((v) => v.ativo).map((v) => v.cor)))}
+          podeEditar={podeGerenciarCatalogo}
         />
       </div>
 
-      <Modal open={isVarianteModalOpen} onClose={() => setIsVarianteModalOpen(false)} title="Nova variante (SKU)">
-        <VarianteForm
-          isSubmitting={isCreatingVariante}
-          onSubmit={(values) =>
-            criarVariante(values, { onSuccess: () => setIsVarianteModalOpen(false) })
-          }
-        />
-      </Modal>
+      {podeGerenciarCatalogo && (
+        <Modal open={isVarianteModalOpen} onClose={() => setIsVarianteModalOpen(false)} title="Nova variante (SKU)">
+          <VarianteForm
+            isSubmitting={isCreatingVariante}
+            onSubmit={(values) =>
+              criarVariante(values, { onSuccess: () => setIsVarianteModalOpen(false) })
+            }
+          />
+        </Modal>
+      )}
     </PageWrapper>
   )
 }

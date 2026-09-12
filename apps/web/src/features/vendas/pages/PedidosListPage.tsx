@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { ShoppingCart } from 'lucide-react'
 import { PageWrapper } from '@/shared/components/layout/PageWrapper'
 import { Button, Select, Input, Pagination } from '@/shared/components/ui'
+import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { routes } from '@/shared/lib/routes'
 import { PedidoTable } from '../components/PedidoTable'
 import { usePedidos } from '../hooks/usePedidos'
 
 export function PedidosListPage() {
   const navigate = useNavigate()
+  const { podeVenderNoPdv } = usePermissoes()
   const [status, setStatus] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
@@ -27,10 +29,12 @@ export function PedidosListPage() {
       title="Pedidos"
       description="Histórico de vendas realizadas."
       actions={
-        <Button onClick={() => navigate(routes.pdv)}>
-          <ShoppingCart className="h-4 w-4" aria-hidden="true" />
-          Nova venda
-        </Button>
+        podeVenderNoPdv ? (
+          <Button onClick={() => navigate(routes.pdv)}>
+            <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+            Nova venda
+          </Button>
+        ) : undefined
       }
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
