@@ -8,6 +8,7 @@ import {
   Users,
   Truck,
   BarChart3,
+  UserCog,
   X,
 } from 'lucide-react'
 import { routes } from '@/shared/lib/routes'
@@ -28,6 +29,7 @@ const navItems: Array<{ to: string; label: string; icon: typeof LayoutDashboard;
   { to: routes.clientes, label: 'Clientes', icon: Users, permissao: 'podeGerenciarClientes' },
   { to: routes.fornecedores, label: 'Fornecedores', icon: Truck, permissao: 'podeGerenciarFornecedores' },
   { to: routes.relatorios, label: 'Relatórios', icon: BarChart3, permissao: 'podeVerRelatorios' },
+  { to: routes.usuarios, label: 'Usuários', icon: UserCog, permissao: 'podeGerenciarUsuarios' },
 ]
 
 type Props = {

@@ -57,6 +57,15 @@ const FornecedorDetalhePage = lazy(() =>
 const RelatoriosPage = lazy(() =>
   import('@/features/relatorios/pages/RelatoriosPage').then((m) => ({ default: m.RelatoriosPage })),
 )
+const UsuariosListPage = lazy(() =>
+  import('@/features/usuarios/pages/UsuariosListPage').then((m) => ({ default: m.UsuariosListPage })),
+)
+const UsuarioNovoPage = lazy(() =>
+  import('@/features/usuarios/pages/UsuarioNovoPage').then((m) => ({ default: m.UsuarioNovoPage })),
+)
+const UsuarioDetalhePage = lazy(() =>
+  import('@/features/usuarios/pages/UsuarioDetalhePage').then((m) => ({ default: m.UsuarioDetalhePage })),
+)
 
 // Fallback exibido pelo Suspense enquanto o chunk da página carrega.
 function PageFallback() {
@@ -118,6 +127,13 @@ export const router = createBrowserRouter([
         path: '/fornecedores/:fornecedorId',
         element: withRole('podeGerenciarFornecedores', <FornecedorDetalhePage />),
       },
+
+      // Usuários — CRUD administrativo, restrito a ADMIN (ver
+      // docs/openapi.yaml, tag "Usuários", x-roles: [ADMIN] em toda a
+      // subárvore) — guarda a rota inteira, mesmo padrão de Clientes/Fornecedores.
+      { path: routes.usuarios, element: withRole('podeGerenciarUsuarios', <UsuariosListPage />) },
+      { path: routes.usuarioNovo, element: withRole('podeGerenciarUsuarios', <UsuarioNovoPage />) },
+      { path: '/usuarios/:usuarioId', element: withRole('podeGerenciarUsuarios', <UsuarioDetalhePage />) },
     ],
   },
   {

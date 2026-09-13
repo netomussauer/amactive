@@ -18,4 +18,7 @@ export const routes = {
   fornecedorNovo: '/fornecedores/novo',
   fornecedorDetalhe: (id: string) => `/fornecedores/${id}`,
   relatorios: '/relatorios',
+  usuarios: '/usuarios',
+  usuarioNovo: '/usuarios/novo',
+  usuarioDetalhe: (id: string) => `/usuarios/${id}`,
 } as const

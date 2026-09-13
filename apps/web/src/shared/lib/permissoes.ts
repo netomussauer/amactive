@@ -38,6 +38,12 @@ export type Permissoes = {
   podeGerenciarFornecedores: boolean
   /** Dashboard e Relatórios (Vendas por período, Produtos mais vendidos, Giro de estoque) — restrito a ADMIN. */
   podeVerRelatorios: boolean
+  /**
+   * Usuários — CRUD administrativo (criar, editar, desativar/reativar,
+   * redefinir senha). Restrito a ADMIN (ver docs/openapi.yaml, tag
+   * "Usuários", `x-roles: [ADMIN]` em toda a subárvore de /usuarios).
+   */
+  podeGerenciarUsuarios: boolean
 }
 
 const PERMISSOES_SEM_ACESSO: Permissoes = {
@@ -47,6 +53,7 @@ const PERMISSOES_SEM_ACESSO: Permissoes = {
   podeGerenciarClientes: false,
   podeGerenciarFornecedores: false,
   podeVerRelatorios: false,
+  podeGerenciarUsuarios: false,
 }
 
 const PERMISSOES_POR_PAPEL: Record<PapelUsuario, Permissoes> = {
@@ -57,6 +64,7 @@ const PERMISSOES_POR_PAPEL: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: true,
     podeGerenciarFornecedores: true,
     podeVerRelatorios: true,
+    podeGerenciarUsuarios: true,
   },
   [PapelUsuario.VENDEDOR]: {
     podeGerenciarCatalogo: false,
@@ -65,6 +73,7 @@ const PERMISSOES_POR_PAPEL: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: true,
     podeGerenciarFornecedores: false,
     podeVerRelatorios: false,
+    podeGerenciarUsuarios: false,
   },
   [PapelUsuario.ESTOQUISTA]: {
     podeGerenciarCatalogo: true,
@@ -73,6 +82,7 @@ const PERMISSOES_POR_PAPEL: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: false,
     podeGerenciarFornecedores: true,
     podeVerRelatorios: false,
+    podeGerenciarUsuarios: false,
   },
 }
 

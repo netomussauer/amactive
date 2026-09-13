@@ -15,6 +15,7 @@ const MATRIZ_ESPERADA: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: true,
     podeGerenciarFornecedores: true,
     podeVerRelatorios: true,
+    podeGerenciarUsuarios: true,
   },
   VENDEDOR: {
     podeGerenciarCatalogo: false,
@@ -23,6 +24,7 @@ const MATRIZ_ESPERADA: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: true,
     podeGerenciarFornecedores: false,
     podeVerRelatorios: false,
+    podeGerenciarUsuarios: false,
   },
   ESTOQUISTA: {
     podeGerenciarCatalogo: true,
@@ -31,6 +33,7 @@ const MATRIZ_ESPERADA: Record<PapelUsuario, Permissoes> = {
     podeGerenciarClientes: false,
     podeGerenciarFornecedores: true,
     podeVerRelatorios: false,
+    podeGerenciarUsuarios: false,
   },
 }
 
