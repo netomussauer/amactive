@@ -39,6 +39,8 @@ info:
 
     | Fornecedores — leitura e escrita | sim | não | sim |
 
+    | Usuários — leitura e escrita (CRUD administrativo) | sim | não | não |
+
     | Relatórios/Dashboard — leitura | sim | não | não |
   version: "0.1.0"
   contact:
@@ -49,6 +51,8 @@ servers:
 
 tags:
   - name: Auth
+    description: Identidade & Acesso
+  - name: Usuários
     description: Identidade & Acesso
   - name: Categorias
     description: Catálogo & Estoque
@@ -95,6 +99,164 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "401":
           $ref: "#/components/responses/NaoAutorizado"
+
+  # ───────────────────────── Usuários (ADMIN apenas) ─────────────────────────
+  /usuarios:
+    get:
+      tags: [Usuários]
+      summary: Listar usuários
+      operationId: listarUsuarios
+      x-roles: [ADMIN]
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Lista paginada de usuários
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsuarioListResponse"
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+    post:
+      tags: [Usuários]
+      summary: Criar usuário
+      description: >
+        A senha é recebida em texto plano no request e nunca é retornada —
+        é convertida para hash bcrypt (`core/security.hash_senha`) antes de
+        persistir. O e-mail precisa ser único.
+      operationId: criarUsuario
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CriarUsuarioRequest"
+      responses:
+        "201":
+          description: Usuário criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsuarioDetalheResponse"
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+        "409":
+          description: E-mail já cadastrado para outro usuário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ErroValidacao"
+
+  /usuarios/{usuarioId}:
+    parameters:
+      - $ref: "#/components/parameters/UsuarioId"
+    get:
+      tags: [Usuários]
+      summary: Obter usuário por id
+      operationId: obterUsuario
+      x-roles: [ADMIN]
+      responses:
+        "200":
+          description: Usuário encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsuarioDetalheResponse"
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+    put:
+      tags: [Usuários]
+      summary: Atualizar usuário (nome, papel, ativo)
+      description: >
+        Não inclui senha (ver `PATCH /usuarios/{usuarioId}/senha`). Um
+        usuário não pode desativar a própria conta nem rebaixar o próprio
+        papel de ADMIN para outro se for o único ADMIN ativo do sistema
+        (salvaguarda — ver `info.description`).
+      operationId: atualizarUsuario
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtualizarUsuarioRequest"
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsuarioDetalheResponse"
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "409":
+          description: >
+            Tentativa de desativar a própria conta ou rebaixar o próprio
+            papel sendo o único ADMIN ativo do sistema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "422":
+          $ref: "#/components/responses/ErroValidacao"
+    delete:
+      tags: [Usuários]
+      summary: Inativar usuário (soft delete — ativo=false)
+      description: >
+        Mesma salvaguarda do último ADMIN ativo descrita em
+        `PUT /usuarios/{usuarioId}` se `usuarioId` for a própria conta.
+      operationId: inativarUsuario
+      x-roles: [ADMIN]
+      responses:
+        "204":
+          description: Usuário inativado
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "409":
+          description: Tentativa de auto-inativação sendo o único ADMIN ativo do sistema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+
+  /usuarios/{usuarioId}/senha:
+    parameters:
+      - $ref: "#/components/parameters/UsuarioId"
+    patch:
+      tags: [Usuários]
+      summary: Redefinir a senha de um usuário (reset administrativo direto)
+      description: >
+        O ADMIN define uma nova senha em texto plano no request para o
+        usuário, sem precisar da senha antiga — não é o fluxo de "esqueci
+        minha senha" (sem e-mail, fora de escopo deste MVP).
+      operationId: redefinirSenhaUsuario
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AtualizarSenhaRequest"
+      responses:
+        "204":
+          description: Senha redefinida
+        "403":
+          $ref: "#/components/responses/AcessoNegado"
+        "404":
+          $ref: "#/components/responses/NaoEncontrado"
+        "422":
+          $ref: "#/components/responses/ErroValidacao"
 
   # ───────────────────────── Categorias ─────────────────────────
   /categorias:
@@ -960,6 +1122,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    UsuarioId:
+      name: usuarioId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     NaoAutorizado:
@@ -1027,6 +1194,45 @@ components:
     PapelUsuario:
       type: string
       enum: [ADMIN, VENDEDOR, ESTOQUISTA]
+
+    # ── Usuários (CRUD administrativo) ──
+    CriarUsuarioRequest:
+      type: object
+      required: [nome, email, senha, papel]
+      properties:
+        nome: { type: string, maxLength: 150 }
+        email: { type: string, format: email }
+        senha: { type: string, format: password, minLength: 8 }
+        papel: { $ref: "#/components/schemas/PapelUsuario" }
+    AtualizarUsuarioRequest:
+      type: object
+      required: [nome, papel, ativo]
+      properties:
+        nome: { type: string, maxLength: 150 }
+        papel: { $ref: "#/components/schemas/PapelUsuario" }
+        ativo: { type: boolean }
+    AtualizarSenhaRequest:
+      type: object
+      required: [senha]
+      properties:
+        senha: { type: string, format: password, minLength: 8 }
+    UsuarioDetalheResponse:
+      type: object
+      description: Nunca inclui `senha_hash`.
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        papel: { $ref: "#/components/schemas/PapelUsuario" }
+        ativo: { type: boolean }
+        criado_em: { type: string, format: date-time }
+    UsuarioListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/UsuarioDetalheResponse" }
+        pagination: { $ref: "#/components/schemas/Pagination" }
 
     # ── Categorias ──
     CriarCategoriaRequest:

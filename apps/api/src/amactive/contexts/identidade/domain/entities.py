@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
@@ -21,3 +22,4 @@ class Usuario:
     senha_hash: str
     papel: PapelUsuario
     ativo: bool
+    criado_em: datetime

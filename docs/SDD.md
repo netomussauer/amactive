@@ -193,6 +193,9 @@ Contrato completo em **[`docs/openapi.yaml`](./openapi.yaml)** (OpenAPI 3.0). Es
 | Método | Path | Contexto | Autenticação | Observação |
 |---|---|---|---|---|
 | POST | `/auth/login` | Identidade | Não | Retorna JWT |
+| GET/POST | `/usuarios` | Identidade | Sim | ADMIN apenas — CRUD administrativo de usuários |
+| GET/PUT/DELETE | `/usuarios/{id}` | Identidade | Sim | ADMIN apenas; DELETE = soft delete (`ativo=false`); salvaguarda do último ADMIN ativo |
+| PATCH | `/usuarios/{id}/senha` | Identidade | Sim | ADMIN apenas — reset administrativo direto de senha |
 | GET/POST | `/categorias` | Catálogo & Estoque | Sim | |
 | GET/POST | `/produtos` | Catálogo & Estoque | Sim | |
 | GET/PUT/DELETE | `/produtos/{id}` | Catálogo & Estoque | Sim | DELETE = soft delete (`ativo=false`) |

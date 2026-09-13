@@ -1,17 +1,24 @@
 """Segurança cross-cutting: hashing de senha (bcrypt), JWT (PyJWT) e
 autorização por papel (RBAC).
 
-TODO (Identidade & Acesso — ver docs/SDD.md ADR-007, escopo item 6 do pedido
-de implementação): esta é uma autenticação **mínima e stateless** suficiente
-para o MVP local — o suficiente para satisfazer a rastreabilidade obrigatória
-de `usuario_id` em `pedido`/`movimentacao_estoque`. NÃO implementado (ok para
-uma fase futura, não bloqueia o MVP local):
+TODO (Identidade & Acesso — ver docs/SDD.md ADR-007): esta é uma
+autenticação **mínima e stateless** suficiente para o MVP local — o
+suficiente para satisfazer a rastreabilidade obrigatória de `usuario_id` em
+`pedido`/`movimentacao_estoque`. NÃO implementado (ok para uma fase futura,
+não bloqueia o MVP local):
   - Revogação de token / refresh token / logout.
-  - Verificação de `usuario.ativo` a cada request (o claim do JWT não é
-    revalidado contra o banco em cada chamada — apenas no login). Um usuário
-    desativado após o login continua com o token válido até expirar.
-  - Recuperação de senha, cadastro de usuários via API (feito apenas via seed
-    de desenvolvimento em `migrations/000002_seed_dev.up.sql`).
+  - Recuperação de senha por e-mail ("esqueci minha senha") — o reset
+    administrativo direto (ADMIN redefine a senha de qualquer usuário sem
+    precisar da senha antiga) já existe via `PATCH /usuarios/{id}/senha`,
+    ver `contexts/identidade/infrastructure/api/router.py`.
+
+Resolvido (não é mais TODO): `get_current_user` revalida `usuario.ativo`
+contra o banco a cada request (não confia apenas no claim do JWT) — um
+usuário desativado perde o acesso já na próxima chamada, sem precisar
+esperar o token expirar (até `jwt_expires_minutes`). Cadastro de usuários
+via API também já existe (`POST /usuarios`, ADMIN apenas) — deixou de ser
+feito apenas via seed de desenvolvimento (`migrations/000002_seed_dev.up.sql`,
+que continua existindo só para permitir o primeiro login local).
 """
 
 from __future__ import annotations
@@ -25,8 +32,11 @@ import bcrypt
 import jwt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.core.config import settings
+from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.exceptions import AcessoNegado, NaoAutorizado
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -68,8 +78,19 @@ def criar_access_token(*, usuario_id: UUID, nome: str, email: str, papel: str) -
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+    session: AsyncSession = Depends(get_db_session),
 ) -> CurrentUser:
-    """Dependency do FastAPI — decodifica o Bearer token e injeta o usuário atual.
+    """Dependency do FastAPI — decodifica o Bearer token, revalida que o
+    usuário ainda existe e está `ativo=true` no banco, e injeta o usuário
+    atual.
+
+    A revalidação de `ativo` custa uma consulta a mais por request
+    autenticado — aceitável dado o volume baixo do sistema (ver
+    docs/avaliacao-integracao-nuvemshop.md), sem cache adicional por ora.
+    Um usuário inexistente ou inativo recebe o mesmo erro (`NaoAutorizado`,
+    401) que um token ausente/inválido — do ponto de vista do cliente,
+    "sessão inválida" é a mensagem correta nos dois casos, sem vazar se o
+    problema é o token em si ou o estado da conta.
 
     Usada em todos os routers protegidos (todos exceto `/auth/login`, `/health`
     e `/metrics`), conforme `security: [bearerAuth: []]` global em
@@ -86,8 +107,17 @@ async def get_current_user(
     except jwt.PyJWTError as exc:
         raise NaoAutorizado("Token de autenticação inválido ou expirado.") from exc
 
+    usuario_id = UUID(payload["sub"])
+    resultado = await session.execute(
+        text("SELECT ativo FROM usuario WHERE id = :usuario_id"),
+        {"usuario_id": str(usuario_id)},
+    )
+    linha = resultado.first()
+    if linha is None or not linha.ativo:
+        raise NaoAutorizado("Sessão inválida.")
+
     return CurrentUser(
-        id=UUID(payload["sub"]),
+        id=usuario_id,
         nome=payload.get("nome", ""),
         email=payload.get("email", ""),
         papel=payload.get("papel", ""),

@@ -22,6 +22,9 @@ from amactive.contexts.catalogo_estoque.infrastructure.api.router import (
     router as catalogo_estoque_router,
 )
 from amactive.contexts.identidade.infrastructure.api.router import router as identidade_router
+from amactive.contexts.identidade.infrastructure.api.router import (
+    usuarios_router as identidade_usuarios_router,
+)
 from amactive.contexts.relatorios.infrastructure.api.router import router as relatorios_router
 from amactive.contexts.vendas.infrastructure.api.router import router as vendas_router
 from amactive.core.config import settings
@@ -95,6 +98,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 
 app.include_router(identidade_router)
+app.include_router(identidade_usuarios_router)
 app.include_router(catalogo_estoque_router)
 app.include_router(vendas_router)
 app.include_router(cadastros_router)
