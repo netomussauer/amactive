@@ -1,0 +1,288 @@
+# Triggers Tekton para o webhook push do Gitea no repo labadmin/amactive.
+#
+# Fluxo:
+#   Gitea push → EventListener (amactive-event-listener)
+#                ↓ github interceptor (valida HMAC via X-Hub-Signature-256)
+#                ↓ cel interceptor (filtra refs/heads/main + extrai short_sha)
+#                ↓ amactive-gitea-binding (mapeia body → params)
+#                ↓ amactive-build-template (cria 2 PipelineRuns: api + web)
+#   PipelineRuns amactive-build-api-<sha7>-... e amactive-build-web-<sha7>-...
+#
+# Sobre o interceptor "github": não existe ClusterInterceptor "gitea" neste
+# cluster (só cel, github, gitlab, bitbucket, slack). Gitea >= 1.16 envia,
+# além do X-Gitea-Signature nativo, um X-Hub-Signature-256 no mesmo formato
+# do GitHub (HMAC-SHA256, prefixo "sha256=") especificamente para
+# compatibilidade — mesma solução já usada pelo amfit e pelo realtpmsys
+# neste cluster. Requer configurar o mesmo secret na Secret K8s referenciada
+# abaixo e no campo "Secret" do webhook no Gitea.
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: amactive-gitea-binding
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger-binding"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  params:
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-revision-short
+      value: $(extensions.short_sha)
+    - name: git-ref
+      value: $(body.ref)
+    - name: pusher
+      value: $(body.pusher.username)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: amactive-build-template
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger-template"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: git-revision-short
+    - name: git-ref
+    - name: pusher
+      default: "unknown"
+  # ATENÇÃO: a API do Tekton Triggers v1beta1 espera "resourcetemplates"
+  # (tudo minúsculo) — "resourceTemplates" (camelCase) é um campo desconhecido
+  # pro schema do CRD e é descartado silenciosamente pelo apiserver. Bug real
+  # já encontrado no amfit-build-template (infra/tekton/trigger-amfit.yaml)
+  # em 2026-09-04 — grafia abaixo já replica a correção.
+  resourcetemplates:
+    # -------------------------------------------------------------------
+    # PipelineRun — API
+    # -------------------------------------------------------------------
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: amactive-build-api-$(tt.params.git-revision-short)-
+        namespace: cicd
+        annotations:
+          gitea.io/pusher: "$(tt.params.pusher)"
+          gitea.io/ref: "$(tt.params.git-ref)"
+        labels:
+          app.kubernetes.io/component: "pipelinerun-api"
+          app.kubernetes.io/managed-by: "argocd"
+          app.kubernetes.io/name: "amactive-tekton"
+          environment: "dev"
+          git-revision-short: "$(tt.params.git-revision-short)"
+          lab_id: "lab-k8s-01"
+          lab_owner: "jose.mussauer"
+          tekton.dev/pipeline: "amactive-build-api"
+          trigger: "gitea-push"
+      spec:
+        pipelineRef:
+          name: amactive-build-api
+        timeouts:
+          pipeline: "30m"
+          tasks: "20m"
+        taskRunTemplate:
+          serviceAccountName: tekton-amactive
+          podTemplate:
+            nodeSelector:
+              workload: cicd
+            securityContext:
+              fsGroup: 1000
+        params:
+          - name: git-url
+            value: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+          - name: git-revision
+            value: "$(tt.params.git-revision)"
+          - name: image-repo
+            value: "harbor.lab.local/amactive/api"
+          - name: image-tag
+            value: "sha-$(tt.params.git-revision-short)"
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: "5Gi"
+                storageClassName: local-path
+          - name: docker-credentials
+            secret:
+              secretName: harbor-push-amactive
+              items:
+                - key: .dockerconfigjson
+                  path: config.json
+
+    # -------------------------------------------------------------------
+    # PipelineRun — Web
+    # -------------------------------------------------------------------
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: amactive-build-web-$(tt.params.git-revision-short)-
+        namespace: cicd
+        annotations:
+          gitea.io/pusher: "$(tt.params.pusher)"
+          gitea.io/ref: "$(tt.params.git-ref)"
+        labels:
+          app.kubernetes.io/component: "pipelinerun-web"
+          app.kubernetes.io/managed-by: "argocd"
+          app.kubernetes.io/name: "amactive-tekton"
+          environment: "dev"
+          git-revision-short: "$(tt.params.git-revision-short)"
+          lab_id: "lab-k8s-01"
+          lab_owner: "jose.mussauer"
+          tekton.dev/pipeline: "amactive-build-web"
+          trigger: "gitea-push"
+      spec:
+        pipelineRef:
+          name: amactive-build-web
+        timeouts:
+          pipeline: "30m"
+          tasks: "20m"
+        taskRunTemplate:
+          serviceAccountName: tekton-amactive
+          podTemplate:
+            nodeSelector:
+              workload: cicd
+            securityContext:
+              fsGroup: 1000
+            # DNS combo recomendado pelo realtpmsys para builds npm neste
+            # lab (CoreDNS retorna AAAA-only intermitente para
+            # registry.npmjs.org) — replicado aqui preventivamente porque o
+            # web do AMACTIVE também roda `npm ci`. Remover se a infra-lab
+            # corrigir o CoreDNS/Pi-hole antes disso ser necessário.
+            dnsPolicy: "None"
+            dnsConfig:
+              nameservers:
+                - 10.43.0.10
+                - 1.1.1.1
+                - 8.8.8.8
+              searches:
+                - cicd.svc.cluster.local
+                - svc.cluster.local
+                - cluster.local
+              options:
+                - name: ndots
+                  value: "5"
+                - name: single-request-reopen
+        params:
+          - name: git-url
+            value: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+          - name: git-revision
+            value: "$(tt.params.git-revision)"
+          - name: image-repo
+            value: "harbor.lab.local/amactive/web"
+          - name: image-tag
+            value: "sha-$(tt.params.git-revision-short)"
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: "5Gi"
+                storageClassName: local-path
+          - name: docker-credentials
+            secret:
+              secretName: harbor-push-amactive
+              items:
+                - key: .dockerconfigjson
+                  path: config.json
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: amactive-gitea-push
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  serviceAccountName: tekton-amactive
+  bindings:
+    - ref: amactive-gitea-binding
+      kind: TriggerBinding
+  interceptors:
+    - ref:
+        kind: ClusterInterceptor
+        name: github
+      params:
+        - name: secretRef
+          value:
+            secretName: gitea-webhook-secret-amactive
+            secretKey: secretToken
+    - ref:
+        kind: ClusterInterceptor
+        name: cel
+      params:
+        - name: filter
+          value: "body.ref == 'refs/heads/main' && body.head_commit.id != ''"
+        - name: overlays
+          value:
+            - key: short_sha
+              expression: "body.head_commit.id.truncate(7)"
+  template:
+    ref: amactive-build-template
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: amactive-event-listener
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "event-listener"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  serviceAccountName: tekton-amactive
+  triggers:
+    - triggerRef: amactive-gitea-push
+  resources:
+    kubernetesResource:
+      serviceType: ClusterIP
+      spec:
+        template:
+          metadata:
+            labels:
+              app.kubernetes.io/component: "event-listener"
+              app.kubernetes.io/name: "amactive-tekton"
+              environment: "dev"
+              lab_id: "lab-k8s-01"
+              lab_owner: "jose.mussauer"
+          spec:
+            nodeSelector:
+              workload: cicd
+            containers:
+              - resources:
+                  requests:
+                    cpu: "50m"
+                    memory: "64Mi"
+                  limits:
+                    cpu: "200m"
+                    memory: "256Mi"

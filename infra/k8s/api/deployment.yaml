@@ -1,0 +1,169 @@
+# Deployment da API AMACTIVE (FastAPI + SQLAlchemy async + asyncpg).
+#
+# Diferenças relevantes em relação ao amfit-api/realtpmsys-api (Go,
+# distroless, uid 65532):
+#   - Imagem base é python:3.12-slim (ver apps/api/Dockerfile), que cria um
+#     usuário `appuser` com UID/GID 1000 (não 65532) — runAsUser/Group aqui
+#     precisa bater com isso.
+#   - readOnlyRootFilesystem: true exige emptyDir em /tmp porque o
+#     python-multipart (upload de imagens de produto) usa
+#     tempfile.SpooledTemporaryFile, que pode espirrar pra disco em /tmp
+#     acima de um certo tamanho.
+#   - /app/migrations é montado a partir do ConfigMap
+#     amactive-api-migrations (ver migrations-configmap.yaml) — supre a
+#     ausência do bind mount de host que o docker-compose usa localmente.
+#   - /app/uploads é um PVC (amactive-api-uploads, ver pvc.yaml), não
+#     emptyDir — precisa persistir entre restarts do pod (mesmo propósito do
+#     volume Docker amactive_uploads_data).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amactive-api
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-api"
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/component: "api"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable: 0 exigiria replicas >= 2 pra nunca ficar sem pod
+      # pronto durante o rollout — com replicas: 1 isso travaria o rollout
+      # esperando um segundo pod que nunca existe. Aceita um pequeno blip de
+      # indisponibilidade neste MVP de 1 réplica (mesma decisão implícita do
+      # amfit/realtpmsys, que também rodam com replicas: 1 sem
+      # maxUnavailable: 0).
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "amactive-api"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "amactive-api"
+        app.kubernetes.io/version: "latest"
+        app.kubernetes.io/component: "api"
+        environment: "dev"
+        lab_id: "lab-k8s-01"
+        lab_owner: "jose.mussauer"
+    spec:
+      nodeSelector:
+        workload: cicd
+      # Harbor exige autenticação para pull. harbor-pull-secret é criado uma
+      # única vez no ns amactive clonando harbor-creds do ns cicd (robot
+      # account com push+pull em amactive/*) — ver infra/README.md, passo
+      # manual, mesmo padrão do amfit/realtpmsys.
+      imagePullSecrets:
+        - name: harbor-pull-secret
+      securityContext:
+        runAsNonRoot: true
+        # uid/gid 1000 = usuário `appuser` criado no Dockerfile
+        # (python:3.12-slim, sem usuário nonroot pronto como as imagens
+        # distroless do amfit/realtpmsys).
+        runAsUser: 1000
+        runAsGroup: 1000
+        # fsGroup aplica chgrp 1000 no PVC de uploads e no ConfigMap de
+        # migrations montados abaixo — sem isso o kubelet monta esses
+        # volumes com root:root e o container (uid 1000, não-root) recebe
+        # permission denied ao gravar em /app/uploads.
+        fsGroup: 1000
+      containers:
+        - name: api
+          image: harbor.lab.local/amactive/api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: pg-password
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://amactive:$(PG_PASSWORD)@postgresql.shared-infra.svc.cluster.local:5432/amactive"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: jwt-secret
+            - name: JWT_ALGORITHM
+              value: "HS256"
+            - name: JWT_EXPIRES_MINUTES
+              value: "480"
+            # settings.py rejeita o JWT_SECRET default de desenvolvimento
+            # quando ENVIRONMENT != "development" — força a existência de um
+            # jwt-secret real no SealedSecret antes do pod subir de verdade.
+            - name: ENVIRONMENT
+              value: "production"
+            - name: UPLOADS_DIR
+              value: "/app/uploads"
+            # DNS ainda não confirmado/registrado no Pi-hole (ver
+            # infra/README.md) — usar o IP do LoadBalancer do web
+            # (infra/k8s/web/service.yaml) até o registro existir.
+            - name: CORS_ORIGINS
+              value: "http://app.amactive.local,http://192.168.1.213"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: uploads
+              mountPath: /app/uploads
+            - name: migrations
+              mountPath: /app/migrations
+              readOnly: true
+          resources:
+            # Perfil "API leve" (tabela de dimensionamento) — mesmo perfil
+            # usado pelo amfit-api/realtpmsys-api.
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          # A API expõe um único endpoint /health (verifica conectividade com
+          # o Postgres) — não há /readyz e /healthz separados no código hoje
+          # (fora do escopo desta tarefa alterar apps/api/src). Mesmo
+          # trade-off já aceito pelo realtpmsys-api neste cluster: os
+          # thresholds/delays abaixo (liveness com initialDelay/period maior
+          # que readiness) compensam parcialmente a falta de semântica
+          # distinta entre os dois.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: amactive-api-uploads
+        - name: migrations
+          configMap:
+            name: amactive-api-migrations

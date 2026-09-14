@@ -1,0 +1,74 @@
+# ArgoCD Application — registra o AMACTIVE no GitOps do lab-k8s-01.
+#
+# Aplicar uma única vez (manual, fora do escopo desta tarefa — ver
+# infra/README.md):
+#   kubectl apply -f infra/argocd/application.yaml
+#
+# Alternativa: copiar este arquivo para o repo infra-lab em
+# kubernetes/apps/amactive.yaml — o app-of-apps fará pickup automático
+# (mesma alternativa documentada no realtpmsys).
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: amactive
+  # ArgoCD do lab roda no namespace cicd (não argocd).
+  namespace: cicd
+  labels:
+    app.kubernetes.io/name: "amactive"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Service DNS interno do Gitea — o argocd-repo-server resolve via
+    # CoreDNS do cluster, não pelo Pi-hole. Owner = labadmin (mirror do
+    # GitHub github.com/netomussauer/amactive, mesmo padrão do
+    # amfit/realtpmsys).
+    repoURL: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+    targetRevision: main
+    path: "infra/k8s"
+    directory:
+      recurse: true
+      # sealedsecret.yaml só existe de verdade depois que alguém com acesso
+      # ao cluster rodar kubeseal (ver infra/k8s/sealedsecret.yaml.example)
+      # — excluir o .example evita o ArgoCD tentar parsear um SealedSecret
+      # com encryptedData placeholder inválido.
+      exclude: "*.example"
+
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: amactive
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: "5s"
+        factor: 2
+        maxDuration: "3m"
+
+  # Sem ignoreDifferences para o Secret amactive-secrets: assim como no
+  # amfit, ele é gerado pelo controller Sealed Secrets a partir do
+  # SealedSecret (que o próprio ArgoCD gerencia) — a Secret derivada tem
+  # ownerReferences apontando pro SealedSecret e não aparece como diff no
+  # plano de sync.
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

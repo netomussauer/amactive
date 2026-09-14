@@ -1,0 +1,129 @@
+# Pipeline de build + push da imagem AMACTIVE Web (Vite + React, servida por
+# nginx — ver apps/web/Dockerfile).
+#
+# Stages:
+#   git-clone (shallow do mirror Gitea)
+#   → kaniko-build-push (apps/web/Dockerfile → harbor.lab.local/amactive/web)
+#   → rollout-restart (deploy amactive-web no ns amactive)
+#
+# Sem stage de teste/lint: mesmo padrão do amfit-build-web (que também não
+# roda `npm run lint`/`vitest` no pipeline) — fica para uma Fase 2, ver
+# infra/README.md "Próximos passos".
+#
+# ATENÇÃO — mesmo problema de DNS documentado pelo realtpmsys
+# (infra/tekton/web/pipeline.yaml e example-pipelinerun.yaml.example): o
+# CoreDNS deste lab retorna AAAA-only intermitente para registry.npmjs.org,
+# causando EAI_AGAIN no `npm ci`. Use o `dnsConfig` do
+# pipelinerun-web-manual.yaml.example ao disparar manualmente até essa
+# instabilidade de rede ser corrigida na infra-lab.
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: amactive-build-web
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "pipeline-web"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Pipeline de build + push da imagem AMACTIVE Web (Vite/React -> nginx).
+    Stages: git-clone -> kaniko build/push (apps/web/Dockerfile) -> rollout-restart.
+  params:
+    - name: git-url
+      type: string
+      default: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+    - name: git-revision
+      type: string
+      default: "main"
+    - name: image-repo
+      type: string
+      default: "harbor.lab.local/amactive/web"
+    - name: image-tag
+      type: string
+      default: "latest"
+    # URL pública da API embutida no bundle JS em BUILD TIME (Vite não lê
+    # env vars em runtime — ver apps/web/Dockerfile). Default aponta para o
+    # DNS ainda não registrado (ver infra/README.md) — sobrescrever aqui
+    # assim que api.amactive.local estiver resolvendo de verdade, ou apontar
+    # para o IP do LoadBalancer (infra/k8s/api/service.yaml) enquanto isso.
+    - name: vite-api-url
+      type: string
+      default: "http://api.amactive.local:8000"
+  results:
+    - name: image-digest
+      description: Digest sha256 da imagem publicada.
+      value: "$(tasks.kaniko-build-push.results.image-digest)"
+    - name: commit
+      description: SHA do commit buildado.
+      value: "$(tasks.git-clone.results.commit)"
+  tasks:
+    - name: git-clone
+      taskRef:
+        kind: Task
+        name: amfit-git-clone
+      params:
+        - name: url
+          value: "$(params.git-url)"
+        - name: revision
+          value: "$(params.git-revision)"
+        - name: depth
+          value: "1"
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: kaniko-build-push
+      runAfter: ["git-clone"]
+      # 1 retry / 15m por tentativa: build do Vite (npm ci + build) é mais
+      # pesado que o da API — mesmo racional de orçamento do
+      # amfit-build-web.
+      retries: 1
+      timeout: "15m"
+      taskRef:
+        kind: Task
+        name: amactive-kaniko-build-push
+      params:
+        - name: image
+          value: "$(params.image-repo)"
+        - name: tag
+          value: "$(params.image-tag)"
+        - name: dockerfile
+          value: "Dockerfile"
+        - name: context
+          value: "apps/web"
+        - name: extra-args
+          value:
+            - "--build-arg=VITE_API_URL=$(params.vite-api-url)"
+      workspaces:
+        - name: source
+          workspace: source
+        - name: docker-credentials
+          workspace: docker-credentials
+
+    - name: rollout-restart
+      runAfter: ["kaniko-build-push"]
+      taskSpec:
+        description: |
+          Reinicia o Deployment amactive-web no ns amactive e aguarda até
+          3min o rollout completar.
+        steps:
+          - name: restart
+            image: docker.io/bitnami/kubectl:latest
+            script: |
+              #!/bin/sh
+              set -eu
+              echo "→ kubectl rollout restart deployment/amactive-web -n amactive"
+              kubectl rollout restart deployment/amactive-web -n amactive
+              echo "→ kubectl rollout status (timeout 3m)"
+              kubectl rollout status deployment/amactive-web -n amactive --timeout=3m
+  workspaces:
+    - name: source
+      description: Workspace onde o código é clonado e compartilhado entre tasks.
+    - name: docker-credentials
+      description: Secret harbor-push-amactive (config.json) para o Kaniko autenticar no Harbor.

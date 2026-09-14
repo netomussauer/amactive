@@ -1,0 +1,444 @@
+# ConfigMap com o conteúdo das migrations SQL (*.up.sql), montado somente-
+# leitura em /app/migrations (mesmo path usado pelo docker-entrypoint.sh ->
+# amactive.scripts.apply_migrations, ver
+# apps/api/src/amactive/scripts/apply_migrations.py).
+#
+# Por quê um ConfigMap em vez de apenas confiar no que já está na imagem:
+# o Dockerfile de apps/api (build context = apps/api/) NÃO copia o diretório
+# migrations/ (ele vive na raiz do monorepo, fora do build context). Em
+# docker-compose isso é resolvido com um bind mount
+# (`./migrations:/app/migrations:ro`, ver docker-compose.yml) — mas não há
+# bind mount de host possível em produção/k8s. Em vez de reestruturar o
+# Dockerfile/contexto de build (o que quebraria o fluxo docker-compose já
+# validado, fora do escopo desta tarefa), este ConfigMap replica o mesmo
+# efeito do bind mount: conteúdo somente-leitura montado em /app/migrations.
+#
+# IMPORTANTE — manutenção manual: toda nova migration adicionada em
+# migrations/*.up.sql precisa ser copiada manualmente para este ConfigMap
+# (não há automação hoje). Se isso virar fricção real, a alternativa correta
+# é mudar o build context do Dockerfile para a raiz do monorepo (como o
+# apps/web do AMFIT faz, contexto "." + dockerfile apps/web/Dockerfile) e
+# copiar migrations/ para dentro da imagem — ver infra/README.md.
+#
+# 000002_seed_dev.up.sql foi INTENCIONALMENTE OMITIDO: cria um usuário ADMIN
+# com senha fraca conhecida (admin123) e é marcado no próprio arquivo como
+# "NUNCA aplicar em produção". O schema_migrations não fica com furo por
+# causa disso — cada migration é rastreada pelo nome do arquivo, não por
+# sequência numérica contígua.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: amactive-api-migrations
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-api"
+    app.kubernetes.io/component: "config"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+data:
+  000001_initial_schema.up.sql: |
+    -- AMACTIVE — Schema inicial (MVP)
+    -- Ver docs/data-model.md para o diagrama ERD e justificativas de modelagem.
+    -- Convenção: forward-only, nunca editar após aplicado em ambiente compartilhado.
+
+    BEGIN;
+
+    -- Extensões
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";   -- gen_random_uuid()
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";    -- busca textual (nome de produto)
+
+    -- Enums
+    CREATE TYPE papel_usuario       AS ENUM ('ADMIN', 'VENDEDOR', 'ESTOQUISTA');
+    CREATE TYPE tipo_movimentacao   AS ENUM ('ENTRADA', 'SAIDA', 'AJUSTE');
+    CREATE TYPE status_pedido       AS ENUM ('PENDENTE', 'CONFIRMADO', 'CANCELADO');
+    CREATE TYPE forma_pagamento     AS ENUM ('DINHEIRO', 'PIX', 'CARTAO_DEBITO', 'CARTAO_CREDITO');
+    CREATE TYPE motivo_movimentacao AS ENUM ('COMPRA', 'VENDA', 'AJUSTE_INVENTARIO', 'DEVOLUCAO', 'PERDA');
+
+    -- Função utilitária: atualiza atualizado_em automaticamente em qualquer UPDATE
+    -- (evita depender da camada de aplicação lembrar de setar o campo em todo UPDATE).
+    CREATE OR REPLACE FUNCTION fn_atualizar_timestamp() RETURNS trigger AS $$
+    BEGIN
+        NEW.atualizado_em := now();
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Identidade & Acesso
+    -- ─────────────────────────────────────────────────────────────
+    CREATE TABLE usuario (
+        id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome            varchar(150) NOT NULL,
+        email           varchar(255) NOT NULL UNIQUE,
+        senha_hash      varchar(255) NOT NULL,
+        papel           papel_usuario NOT NULL DEFAULT 'VENDEDOR',
+        ativo           boolean NOT NULL DEFAULT true,
+        criado_em       timestamptz NOT NULL DEFAULT now(),
+        atualizado_em   timestamptz
+    );
+
+    CREATE TRIGGER trg_usuario_atualizado
+        BEFORE UPDATE ON usuario
+        FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Cadastros (Master Data)
+    -- ─────────────────────────────────────────────────────────────
+    CREATE TABLE cliente (
+        id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome                 varchar(150) NOT NULL,
+        cpf_cnpj             varchar(20) UNIQUE,
+        email                varchar(255),
+        telefone             varchar(20),
+        endereco_logradouro  varchar(255),
+        endereco_cidade      varchar(100),
+        endereco_uf          char(2),
+        endereco_cep         varchar(10),
+        ativo                boolean NOT NULL DEFAULT true,
+        criado_em            timestamptz NOT NULL DEFAULT now(),
+        atualizado_em        timestamptz
+    );
+
+    CREATE TRIGGER trg_cliente_atualizado
+        BEFORE UPDATE ON cliente
+        FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
+    CREATE TABLE fornecedor (
+        id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        razao_social         varchar(150) NOT NULL,
+        nome_fantasia        varchar(150),
+        cnpj                 varchar(20) UNIQUE,
+        email                varchar(255),
+        telefone             varchar(20),
+        endereco_logradouro  varchar(255),
+        endereco_cidade      varchar(100),
+        endereco_uf          char(2),
+        endereco_cep         varchar(10),
+        ativo                boolean NOT NULL DEFAULT true,
+        criado_em            timestamptz NOT NULL DEFAULT now(),
+        atualizado_em        timestamptz
+    );
+
+    CREATE TRIGGER trg_fornecedor_atualizado
+        BEFORE UPDATE ON fornecedor
+        FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Catálogo & Estoque
+    -- ─────────────────────────────────────────────────────────────
+    CREATE TABLE categoria (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        nome        varchar(100) NOT NULL UNIQUE,
+        slug        varchar(100) NOT NULL UNIQUE,
+        ativo       boolean NOT NULL DEFAULT true,
+        criado_em   timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE produto (
+        id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        categoria_id   uuid REFERENCES categoria(id) ON DELETE SET NULL,
+        nome           varchar(200) NOT NULL,
+        descricao      text,
+        marca          varchar(100) NOT NULL DEFAULT 'AMACTIVE',
+        ativo          boolean NOT NULL DEFAULT true,
+        criado_em      timestamptz NOT NULL DEFAULT now(),
+        atualizado_em  timestamptz,
+        deletado_em    timestamptz
+    );
+
+    -- Índices parciais: excluem produtos soft-deleted (deletado_em) do alvo de
+    -- busca/listagem, que é o caso de uso dominante (catálogo ativo/consultável).
+    CREATE INDEX idx_produto_nome_trgm ON produto USING gin (nome gin_trgm_ops) WHERE deletado_em IS NULL;
+    CREATE INDEX idx_produto_categoria ON produto(categoria_id) WHERE deletado_em IS NULL;
+
+    CREATE TRIGGER trg_produto_atualizado
+        BEFORE UPDATE ON produto
+        FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
+    CREATE TABLE produto_variante (
+        id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        produto_id     uuid NOT NULL REFERENCES produto(id) ON DELETE RESTRICT,
+        sku            varchar(50) NOT NULL UNIQUE,
+        tamanho        varchar(10) NOT NULL,   -- PP|P|M|G|GG ou numérico (ex: "38")
+        cor            varchar(50) NOT NULL,
+        preco_venda    decimal(10,2) NOT NULL CHECK (preco_venda >= 0),
+        preco_custo    decimal(10,2) CHECK (preco_custo >= 0),
+        ativo          boolean NOT NULL DEFAULT true,
+        criado_em      timestamptz NOT NULL DEFAULT now(),
+        atualizado_em  timestamptz
+    );
+
+    CREATE INDEX idx_variante_produto ON produto_variante(produto_id);
+
+    CREATE TRIGGER trg_variante_atualizada
+        BEFORE UPDATE ON produto_variante
+        FOR EACH ROW EXECUTE FUNCTION fn_atualizar_timestamp();
+
+    CREATE TABLE estoque (
+        id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        variante_id    uuid NOT NULL UNIQUE REFERENCES produto_variante(id) ON DELETE CASCADE,
+        quantidade     integer NOT NULL DEFAULT 0 CHECK (quantidade >= 0),
+        estoque_minimo integer NOT NULL DEFAULT 5 CHECK (estoque_minimo >= 0),
+        atualizado_em  timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX idx_estoque_baixo ON estoque(variante_id) WHERE quantidade <= estoque_minimo;
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Invariante "toda variante possui saldo de estoque" garantida no banco:
+    -- ao criar uma variante, o saldo zerado é criado atomicamente na mesma
+    -- transação — nunca depende da camada de aplicação lembrar de inserir a
+    -- linha em `estoque` separadamente (ver docs/openapi.yaml POST
+    -- /produtos/{id}/variantes: "estoque inicial zerado é criado automaticamente").
+    -- ─────────────────────────────────────────────────────────────
+    CREATE OR REPLACE FUNCTION fn_criar_estoque_inicial() RETURNS trigger AS $$
+    BEGIN
+        INSERT INTO estoque (variante_id) VALUES (NEW.id);
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER trg_variante_cria_estoque
+        AFTER INSERT ON produto_variante
+        FOR EACH ROW EXECUTE FUNCTION fn_criar_estoque_inicial();
+
+    CREATE TABLE movimentacao_estoque (
+        id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        variante_id    uuid NOT NULL REFERENCES produto_variante(id) ON DELETE RESTRICT,
+        tipo           tipo_movimentacao NOT NULL,
+        quantidade     integer NOT NULL,
+        motivo         motivo_movimentacao NOT NULL,
+        pedido_id      uuid,                   -- FK adicionada após criação de "pedido" (ver abaixo)
+        fornecedor_id  uuid REFERENCES fornecedor(id) ON DELETE SET NULL,
+        usuario_id     uuid NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
+        criado_em      timestamptz NOT NULL DEFAULT now(),
+        -- ENTRADA/SAIDA sempre representam magnitude positiva (sinal implícito
+        -- no tipo); AJUSTE pode ser positivo (sobra de inventário) ou negativo
+        -- (falta), nunca zero.
+        CONSTRAINT chk_movimentacao_sinal CHECK (
+            (tipo IN ('ENTRADA', 'SAIDA') AND quantidade > 0)
+            OR (tipo = 'AJUSTE' AND quantidade <> 0)
+        ),
+        -- Toda saída por venda precisa manter rastreabilidade do pedido que a
+        -- originou (auditoria — nunca uma SAIDA de motivo=VENDA órfã de pedido).
+        CONSTRAINT chk_movimentacao_venda_tem_pedido CHECK (
+            motivo <> 'VENDA' OR pedido_id IS NOT NULL
+        )
+    );
+
+    CREATE INDEX idx_movimentacao_variante ON movimentacao_estoque(variante_id, criado_em DESC);
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Estratégia de concorrência para a baixa (e reposição) de estoque
+    -- Ver docs/data-model.md § "Estratégia de Concorrência — Baixa de Estoque"
+    -- para a explicação completa e a orientação de uso pela camada de aplicação.
+    --
+    -- Regra de ouro para a aplicação: NUNCA fazer UPDATE direto em
+    -- estoque.quantidade. Toda alteração de saldo é sempre um INSERT em
+    -- movimentacao_estoque; este trigger aplica o delta de forma atômica,
+    -- concentrando no banco (não na aplicação) a garantia de que o estoque
+    -- nunca fica negativo sob concorrência.
+    -- ─────────────────────────────────────────────────────────────
+    CREATE OR REPLACE FUNCTION fn_aplicar_movimentacao_estoque() RETURNS trigger AS $$
+    DECLARE
+        v_delta  integer;
+        v_linhas integer;
+    BEGIN
+        v_delta := CASE NEW.tipo
+            WHEN 'ENTRADA' THEN NEW.quantidade
+            WHEN 'SAIDA'   THEN -NEW.quantidade
+            WHEN 'AJUSTE'  THEN NEW.quantidade
+        END;
+
+        -- UPDATE atômico: a própria instrução adquire o lock de linha, valida
+        -- saldo suficiente e aplica o delta em um único round-trip — elimina a
+        -- janela de corrida de um SELECT-then-UPDATE, funcionando corretamente
+        -- mesmo sob o isolamento padrão READ COMMITTED (não exige SERIALIZABLE).
+        UPDATE estoque
+           SET quantidade    = quantidade + v_delta,
+               atualizado_em = now()
+         WHERE variante_id = NEW.variante_id
+           AND quantidade + v_delta >= 0;
+
+        GET DIAGNOSTICS v_linhas = ROW_COUNT;
+
+        IF v_linhas = 0 THEN
+            RAISE EXCEPTION 'estoque_insuficiente: variante % nao possui saldo para movimentacao de % unidade(s) (tipo %)',
+                NEW.variante_id, NEW.quantidade, NEW.tipo
+                USING ERRCODE = 'P0001';
+        END IF;
+
+        RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    CREATE TRIGGER trg_movimentacao_atualiza_estoque
+        AFTER INSERT ON movimentacao_estoque
+        FOR EACH ROW EXECUTE FUNCTION fn_aplicar_movimentacao_estoque();
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Vendas
+    -- ─────────────────────────────────────────────────────────────
+
+    -- Geração atômica e concorrency-safe do número sequencial legível do
+    -- pedido (ex: PED-000123). nextval() é intrinsecamente livre de corrida
+    -- no Postgres (não sofre do mesmo risco que a baixa de estoque), então
+    -- não requer lock adicional na camada de aplicação. Uso recomendado
+    -- dentro da mesma transação de criação do pedido:
+    --   numero := 'PED-' || lpad(nextval('pedido_numero_seq')::text, 6, '0');
+    CREATE SEQUENCE pedido_numero_seq AS bigint START WITH 1 INCREMENT BY 1;
+
+    CREATE TABLE pedido (
+        id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        numero         varchar(20) NOT NULL UNIQUE,
+        cliente_id     uuid REFERENCES cliente(id) ON DELETE SET NULL,
+        usuario_id     uuid NOT NULL REFERENCES usuario(id) ON DELETE RESTRICT,
+        status         status_pedido NOT NULL DEFAULT 'PENDENTE',
+        subtotal       decimal(10,2) NOT NULL CHECK (subtotal >= 0),
+        desconto       decimal(10,2) NOT NULL DEFAULT 0 CHECK (desconto >= 0),
+        valor_total    decimal(10,2) NOT NULL CHECK (valor_total >= 0),
+        observacao     text,
+        criado_em      timestamptz NOT NULL DEFAULT now(),
+        confirmado_em  timestamptz,
+        cancelado_em   timestamptz
+    );
+
+    CREATE INDEX idx_pedido_status_criado ON pedido(status, criado_em DESC);
+    -- Listagem de pedidos por cliente + período (GET /pedidos?cliente_id=&data_inicio=&data_fim=).
+    -- Parcial: pedidos de venda avulsa (cliente_id IS NULL) nunca são filtrados
+    -- por este padrão de acesso, então ficam fora do índice (menor, mais eficiente).
+    CREATE INDEX idx_pedido_cliente_criado ON pedido(cliente_id, criado_em DESC) WHERE cliente_id IS NOT NULL;
+
+    -- FK tardia de movimentacao_estoque.pedido_id (pedido é criado depois na ordem do arquivo)
+    ALTER TABLE movimentacao_estoque
+        ADD CONSTRAINT fk_movimentacao_pedido
+        FOREIGN KEY (pedido_id) REFERENCES pedido(id) ON DELETE SET NULL;
+
+    CREATE TABLE item_pedido (
+        id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        pedido_id       uuid NOT NULL REFERENCES pedido(id) ON DELETE CASCADE,
+        variante_id     uuid NOT NULL REFERENCES produto_variante(id) ON DELETE RESTRICT,
+        quantidade      integer NOT NULL CHECK (quantidade > 0),
+        preco_unitario  decimal(10,2) NOT NULL CHECK (preco_unitario >= 0),
+        desconto_item   decimal(10,2) NOT NULL DEFAULT 0 CHECK (desconto_item >= 0),
+        subtotal        decimal(10,2) NOT NULL CHECK (subtotal >= 0)
+    );
+
+    CREATE INDEX idx_item_pedido_pedido ON item_pedido(pedido_id);
+    CREATE INDEX idx_item_pedido_variante ON item_pedido(variante_id);
+
+    CREATE TABLE pagamento_pedido (
+        id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        pedido_id         uuid NOT NULL REFERENCES pedido(id) ON DELETE CASCADE,
+        forma_pagamento   forma_pagamento NOT NULL,
+        valor             decimal(10,2) NOT NULL CHECK (valor > 0),
+        criado_em         timestamptz NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX idx_pagamento_pedido ON pagamento_pedido(pedido_id);
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Views de leitura — Relatórios & Dashboard (CQRS-lite, ver docs/SDD.md §1.5)
+    -- ─────────────────────────────────────────────────────────────
+    CREATE VIEW vw_vendas_por_periodo AS
+    SELECT
+        date_trunc('day', p.confirmado_em) AS dia,
+        COUNT(DISTINCT p.id)               AS total_pedidos,
+        SUM(p.valor_total)                 AS faturamento
+    FROM pedido p
+    WHERE p.status = 'CONFIRMADO'
+    GROUP BY date_trunc('day', p.confirmado_em);
+
+    CREATE VIEW vw_produtos_mais_vendidos AS
+    SELECT
+        ip.variante_id,
+        pv.sku,
+        pr.nome AS produto_nome,
+        SUM(ip.quantidade)              AS quantidade_vendida,
+        SUM(ip.subtotal)                AS faturamento
+    FROM item_pedido ip
+    JOIN pedido p             ON p.id = ip.pedido_id AND p.status = 'CONFIRMADO'
+    JOIN produto_variante pv  ON pv.id = ip.variante_id
+    JOIN produto pr           ON pr.id = pv.produto_id
+    GROUP BY ip.variante_id, pv.sku, pr.nome;
+
+    CREATE VIEW vw_giro_estoque AS
+    SELECT
+        me.variante_id,
+        pv.sku,
+        SUM(CASE WHEN me.tipo = 'SAIDA' THEN me.quantidade ELSE 0 END) AS total_saidas,
+        e.quantidade AS saldo_atual
+    FROM movimentacao_estoque me
+    JOIN produto_variante pv ON pv.id = me.variante_id
+    JOIN estoque e           ON e.variante_id = me.variante_id
+    GROUP BY me.variante_id, pv.sku, e.quantidade;
+
+    COMMIT;
+
+  000003_produto_imagem.up.sql: |
+    -- AMACTIVE — Imagens de produto (galeria por cor)
+    -- Ver docs/data-model.md § Decisões de Modelagem para a justificativa de
+    -- vincular a imagem à COR (não à variante tamanho+cor): uma foto de produto
+    -- não muda por tamanho, apenas por cor.
+    -- Convenção: forward-only, nunca editar após aplicado em ambiente compartilhado.
+
+    BEGIN;
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Catálogo & Estoque
+    -- ─────────────────────────────────────────────────────────────
+    CREATE TABLE produto_imagem (
+        id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        produto_id   uuid NOT NULL REFERENCES produto(id) ON DELETE CASCADE,
+        -- Mesma convenção de produto_variante.cor: texto livre, sem tabela/enum
+        -- de cores separada. A validação de que a cor informada aqui de fato
+        -- existe entre as variantes do produto é responsabilidade da camada de
+        -- aplicação (não é uma FK possível, pois `cor` não é chave em
+        -- produto_variante).
+        cor          varchar(50) NOT NULL,
+        -- Caminho relativo do arquivo em disco (volume Docker local nesta fase,
+        -- não S3), ex: /media/produtos/{produto_id}/{uuid}.jpg
+        url          varchar(500) NOT NULL,
+        ordem        smallint NOT NULL DEFAULT 0 CHECK (ordem >= 0),
+        principal    boolean NOT NULL DEFAULT false,
+        criado_em    timestamptz NOT NULL DEFAULT now()
+    );
+
+    -- Galeria de uma cor de um produto (padrão de acesso dominante: listar todas
+    -- as imagens de produto_id+cor, ordenadas por `ordem` na aplicação).
+    CREATE INDEX idx_produto_imagem_produto_cor ON produto_imagem(produto_id, cor);
+
+    -- No máximo uma imagem principal (capa) por produto+cor. Índice único
+    -- parcial em vez de trigger: a constraint é puramente estática (não depende
+    -- de agregação nem de lógica condicional além do próprio filtro), então o
+    -- Postgres já garante a exclusão mútua na própria instrução INSERT/UPDATE.
+    CREATE UNIQUE INDEX uq_produto_imagem_principal_por_cor
+        ON produto_imagem(produto_id, cor)
+        WHERE principal = true;
+
+    COMMIT;
+
+  000004_produto_desconto_promocional.up.sql: |
+    -- AMACTIVE — Desconto promocional por produto
+    -- Ver docs/data-model.md § Decisões de Modelagem para a justificativa de
+    -- usar um único campo NULL-ável (sem coluna boolean separada) para
+    -- representar "sem promoção ativa".
+    -- Convenção: forward-only, nunca editar após aplicado em ambiente compartilhado.
+
+    BEGIN;
+
+    -- ─────────────────────────────────────────────────────────────
+    -- Catálogo & Estoque
+    -- ─────────────────────────────────────────────────────────────
+    -- NULL = sem promoção ativa no momento (não usamos uma coluna boolean
+    -- separada tipo `em_promocao` — o próprio valor NULL já é inequívoco e
+    -- evita o estado inconsistente "em_promocao=true, desconto_percentual=NULL").
+    ALTER TABLE produto
+        ADD COLUMN desconto_percentual decimal(5,2)
+            CONSTRAINT chk_produto_desconto_percentual
+            CHECK (desconto_percentual IS NULL OR (desconto_percentual > 0 AND desconto_percentual <= 100));
+
+    COMMIT;
+

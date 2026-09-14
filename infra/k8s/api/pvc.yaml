@@ -1,0 +1,31 @@
+# PVC para /app/uploads — imagens de produto gravadas em disco local (mesmo
+# propósito do volume Docker `amactive_uploads_data` já usado em
+# docker-compose.yml; decisão confirmada: MinIO/S3 fica para uma etapa
+# futura, não migrar agora).
+#
+# RWO + storageClassName local-path (default do K3s, mesmo padrão usado
+# pelos workspaces Tekton do amfit/realtpmsys neste cluster) — suficiente
+# porque o Deployment da API roda com replicas: 1 (um único pod monta o
+# volume por vez).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: amactive-api-uploads
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-api"
+    app.kubernetes.io/component: "storage"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      # Ponto de partida — imagens de produto (JPEG/PNG comprimidos).
+      # Redimensionar depois via `kubectl edit pvc` se necessário (local-path
+      # não suporta expansão online por padrão no K3s — confirmar antes).
+      storage: 5Gi

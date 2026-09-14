@@ -1,0 +1,148 @@
+# Pipeline de build + push da imagem AMACTIVE API (FastAPI/Python).
+#
+# Stages:
+#   git-clone (shallow do mirror Gitea)
+#   → python-test (ruff check + mypy + pytest -m unit em apps/api/)
+#   → kaniko-build-push (apps/api/Dockerfile → harbor.lab.local/amactive/api)
+#   → rollout-restart (kubectl restart Deployment p/ puxar :latest novo)
+#
+# context = apps/api (não a raiz do monorepo): o Dockerfile existente usa
+# COPY com paths relativos a apps/api/ (pyproject.toml, src,
+# docker-entrypoint.sh) e não foi alterado por esta tarefa — mudar o
+# context/Dockerfile para incluir migrations/ (raiz do repo) quebraria o
+# docker-compose local já validado. migrations/ chega ao pod via ConfigMap
+# em runtime, não via imagem — ver comentário em
+# infra/k8s/api/migrations-configmap.yaml.
+#
+# Tasks usadas:
+#   - amfit-git-clone            → reutilizada do ns cicd (debian-based,
+#                                   contorna bug de musl getaddrinfo do
+#                                   alpine/git padrão do lab — mesmo motivo
+#                                   documentado no realtpmsys)
+#   - python-test                → local (infra/tekton/task-python-test.yaml)
+#   - amactive-kaniko-build-push → local (infra/tekton/task-kaniko.yaml)
+#
+# Falha fast: qualquer task com erro aborta o pipeline.
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: amactive-build-api
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "pipeline-api"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Pipeline de build + push da imagem AMACTIVE API (FastAPI/Python).
+    Stages: git-clone -> python-test -> kaniko build/push -> rollout-restart.
+  params:
+    - name: git-url
+      type: string
+      default: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+      description: URL do repositório Gitea (mirror).
+    - name: git-revision
+      type: string
+      default: "main"
+      description: Branch/tag/SHA a buildar.
+    - name: image-repo
+      type: string
+      default: "harbor.lab.local/amactive/api"
+      description: Repositório Harbor de destino.
+    - name: image-tag
+      type: string
+      default: "latest"
+      description: Tag da imagem (além de :latest, sempre pushada).
+  results:
+    - name: image-digest
+      description: Digest sha256 da imagem publicada.
+      value: "$(tasks.kaniko-build-push.results.image-digest)"
+    - name: commit
+      description: SHA do commit buildado.
+      value: "$(tasks.git-clone.results.commit)"
+  tasks:
+    - name: git-clone
+      taskRef:
+        kind: Task
+        name: amfit-git-clone
+      params:
+        - name: url
+          value: "$(params.git-url)"
+        - name: revision
+          value: "$(params.git-revision)"
+        - name: depth
+          value: "1"
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: python-test
+      runAfter: ["git-clone"]
+      retries: 1
+      taskRef:
+        kind: Task
+        name: python-test
+      params:
+        - name: package-path
+          value: "apps/api"
+        - name: python-version
+          value: "3.12"
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: kaniko-build-push
+      runAfter: ["python-test"]
+      # Retry + timeout curto: absorve timeouts transientes de rede
+      # alcançando o token service do Harbor (mesmo achado documentado nos
+      # pipelines do amfit em 2026-09-08).
+      retries: 2
+      timeout: "8m"
+      taskRef:
+        kind: Task
+        name: amactive-kaniko-build-push
+      params:
+        - name: image
+          value: "$(params.image-repo)"
+        - name: tag
+          value: "$(params.image-tag)"
+        - name: dockerfile
+          value: "Dockerfile"
+        - name: context
+          value: "apps/api"
+      workspaces:
+        - name: source
+          workspace: source
+        - name: docker-credentials
+          workspace: docker-credentials
+
+    # Deployment usa tag :latest (sem mudança no manifesto a cada build),
+    # então nem kubectl nem o ArgoCD reiniciam os pods sozinhos após um push
+    # — mesmo padrão do amfit/realtpmsys. Exige a Role/RoleBinding em
+    # infra/k8s/rbac-tekton-rollout.yaml.
+    - name: rollout-restart
+      runAfter: ["kaniko-build-push"]
+      taskSpec:
+        description: |
+          Reinicia o Deployment amactive-api no ns amactive e aguarda até
+          3min o rollout completar.
+        steps:
+          - name: restart
+            image: docker.io/bitnami/kubectl:latest
+            script: |
+              #!/bin/sh
+              set -eu
+              echo "→ kubectl rollout restart deployment/amactive-api -n amactive"
+              kubectl rollout restart deployment/amactive-api -n amactive
+              echo "→ kubectl rollout status (timeout 3m)"
+              kubectl rollout status deployment/amactive-api -n amactive --timeout=3m
+  workspaces:
+    - name: source
+      description: Workspace onde o código é clonado e compartilhado entre tasks.
+    - name: docker-credentials
+      description: Workspace que monta o Secret harbor-push-amactive (config.json) para o Kaniko.

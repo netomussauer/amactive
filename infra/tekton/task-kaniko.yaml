@@ -1,0 +1,89 @@
+# Task Kaniko específica do AMACTIVE.
+#
+# Diferenças para a task genérica `kaniko-build-push` do ns cicd (mesmo
+# motivo documentado pelo realtpmsys/task-kaniko.yaml):
+#   - Usa o workspace `docker-credentials` declarado no Pipeline, respeitando
+#     o secret passado pelo TriggerTemplate/PipelineRun (harbor-push-amactive),
+#     em vez de um secret hardcoded sem acesso a amactive/*.
+#   - Aceita um param opcional `extra-args` (array) — necessário para o
+#     build do web (VITE_API_URL é embutida no bundle em BUILD TIME pelo
+#     Vite, ver apps/web/Dockerfile; a task genérica do lab e a do
+#     realtpmsys não suportam build-args). Vazio (default []) não adiciona
+#     nenhuma flag extra — inofensivo para o build da API, que não usa
+#     build-args.
+#     NOTA sobre a sintaxe: o Tekton só expande "$(params.foo[*])" em
+#     múltiplos argumentos quando a referência é o elemento INTEIRO da lista
+#     `args` (não é possível concatenar prefixo+array numa única string) —
+#     por isso o caller passa a flag completa já formatada, ex:
+#     "--build-arg=VITE_API_URL=http://api.amactive.local:8000", em vez de
+#     só "VITE_API_URL=...".
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: amactive-kaniko-build-push
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "task"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Kaniko build + push. Lê config.json do workspace docker-credentials
+    (Secret dockerconfigjson montado pelo TriggerTemplate/PipelineRun).
+    Suporta --build-arg via o param `build-args` (array "KEY=VALUE").
+  params:
+    - name: image
+      type: string
+      description: "Repositório da imagem (ex: harbor.lab.local/amactive/api)"
+    - name: tag
+      type: string
+      default: "latest"
+    - name: dockerfile
+      type: string
+      default: "Dockerfile"
+    - name: context
+      type: string
+      default: "."
+    - name: extra-args
+      type: array
+      description: >-
+        Argumentos extra repassados ao Kaniko como itens já formatados
+        (ex: "--build-arg=VITE_API_URL=..."). Opcional, default vazio.
+      default: []
+  results:
+    - name: image-digest
+      description: Digest SHA da imagem construída
+  workspaces:
+    - name: source
+      description: Workspace com o código-fonte
+    - name: docker-credentials
+      description: Workspace com Secret dockerconfigjson (montado como /kaniko/.docker/config.json)
+      mountPath: /kaniko/.docker
+  steps:
+    - name: build-and-push
+      image: gcr.io/kaniko-project/executor:v1.23.2
+      env:
+        - name: DOCKER_CONFIG
+          value: /kaniko/.docker
+      computeResources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+      args:
+        - "--dockerfile=$(params.dockerfile)"
+        - "--context=dir://$(workspaces.source.path)/$(params.context)"
+        - "--destination=$(params.image):$(params.tag)"
+        - "--destination=$(params.image):latest"
+        - "--skip-tls-verify-registry=harbor.lab.local"
+        - "--cache=false"
+        - "--digest-file=$(results.image-digest.path)"
+        - "--verbosity=info"
+        - "$(params.extra-args[*])"

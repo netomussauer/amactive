@@ -1,0 +1,70 @@
+# Example PipelineRun para disparar o build do web manualmente.
+#
+# IMPORTANTE — mesmo workaround de DNS documentado pelo realtpmsys
+# (infra/tekton/web/example-pipelinerun.yaml.example): sem o `dnsConfig`
+# abaixo, `npm ci` pode falhar com EAI_AGAIN ao resolver registry.npmjs.org
+# neste cluster (CoreDNS retorna AAAA-only intermitente).
+#
+# NÃO aplicar via `kubectl apply`. Use `kubectl create`:
+#
+#   COMMIT=$(git rev-parse --short HEAD)
+#   sed "s/REPLACE_WITH_SHORT_SHA/$COMMIT/" infra/tekton/pipelinerun-web-manual.yaml.example \
+#     | kubectl create -f -
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: amactive-build-web-manual-
+  namespace: cicd
+  labels:
+    tekton.dev/pipeline: amactive-build-web
+    trigger: manual
+spec:
+  pipelineRef:
+    name: amactive-build-web
+  timeouts:
+    pipeline: 30m
+    tasks: 25m
+  taskRunTemplate:
+    serviceAccountName: tekton-amactive
+    podTemplate:
+      nodeSelector:
+        workload: cicd
+      securityContext:
+        fsGroup: 1000
+      dnsPolicy: "None"
+      dnsConfig:
+        nameservers:
+          - 10.43.0.10
+          - 1.1.1.1
+          - 8.8.8.8
+        searches:
+          - cicd.svc.cluster.local
+          - svc.cluster.local
+          - cluster.local
+        options:
+          - name: ndots
+            value: "5"
+          - name: single-request-reopen
+  params:
+    - name: git-revision
+      value: "REPLACE_WITH_SHORT_SHA"
+    - name: image-tag
+      value: "sha-REPLACE_WITH_SHORT_SHA"
+    - name: vite-api-url
+      value: "http://api.amactive.local:8000"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: "5Gi"
+          storageClassName: local-path
+    - name: docker-credentials
+      secret:
+        secretName: harbor-push-amactive
+        items:
+          - key: .dockerconfigjson
+            path: config.json

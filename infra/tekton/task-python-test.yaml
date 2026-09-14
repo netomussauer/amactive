@@ -1,0 +1,93 @@
+# Task — ruff check + mypy + pytest (somente testes marcados `unit`) em
+# apps/api/. Adaptação do padrão `task-golang-test.yaml` do amfit para
+# Python — mesma ideia (lint + testes antes do build da imagem), ferramentas
+# trocadas pelas que o projeto já usa (ver apps/api/pyproject.toml
+# [project.optional-dependencies].dev e [tool.pytest.ini_options].markers).
+#
+# Por que só `pytest -m unit` (não a suíte inteira): os testes marcados
+# `integration` (ver pyproject.toml) exigem um Postgres acessível via
+# TEST_DATABASE_URL — não há Postgres disponível dentro do Pod da Task, e
+# não faz sentido apontar para o Postgres compartilhado de shared-infra
+# (arriscaria rodar migrations/testes destrutivos contra um banco real
+# usado por outros apps). Os testes de integração continuam rodando
+# localmente/manualmente (ver apps/api/README.md) — cobrir isso no pipeline
+# fica para uma iteração futura (ex: Postgres efêmero via sidecar/Job).
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: python-test
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "ci-task"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Executa `ruff check`, `mypy` e `pytest -m unit` no diretório
+    especificado. Usado pelo pipeline da API do AMACTIVE antes do build da
+    imagem.
+  workspaces:
+    - name: source
+      description: Workspace contendo o repositório clonado.
+  params:
+    - name: package-path
+      description: Caminho relativo ao workspace onde rodar os testes.
+      type: string
+      default: apps/api
+    - name: python-version
+      description: Versão da imagem python a usar.
+      type: string
+      default: "3.12"
+  # pip cache num emptyDir local (não no workspace `source`) — mesmo
+  # racional do golang-test do amfit: evita qualquer problema de locking em
+  # storageClass de rede, e mantém o pacote isolado do clone original.
+  volumes:
+    - name: pipcache
+      emptyDir: {}
+  steps:
+    - name: lint-typecheck-test
+      image: python:$(params.python-version)-slim
+      workingDir: /work
+      env:
+        - name: PIP_CACHE_DIR
+          value: /pipcache
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
+      volumeMounts:
+        - name: pipcache
+          mountPath: /pipcache
+      script: |
+        #!/usr/bin/env bash
+        set -eu
+
+        echo ">>> copiando $(params.package-path) do workspace para /work"
+        mkdir -p /work
+        cp -a "$(workspaces.source.path)/$(params.package-path)/." /work/
+        cd /work
+
+        echo ">>> python version"
+        python --version
+
+        echo ">>> pip install -e .[dev]"
+        pip install --quiet --editable ".[dev]"
+
+        echo ">>> ruff check ."
+        ruff check .
+
+        echo ">>> mypy src"
+        mypy src
+
+        echo ">>> pytest -m unit"
+        pytest -m unit
+      computeResources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"

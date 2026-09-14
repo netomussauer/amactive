@@ -1,0 +1,55 @@
+# Example PipelineRun para disparar o build da API manualmente (smoke test
+# ou primeiro build antes do webhook estar configurado).
+#
+# NÃO aplicar via `kubectl apply` (ArgoCD ignora *.example, ver
+# infra/argocd/application-tekton.yaml `directory.exclude`). Use
+# `kubectl create` para gerar um nome único a cada execução:
+#
+#   COMMIT=$(git rev-parse --short HEAD)
+#   sed "s/REPLACE_WITH_SHORT_SHA/$COMMIT/" infra/tekton/pipelinerun-api-manual.yaml.example \
+#     | kubectl create -f -
+#
+# Acompanhar:
+#   kubectl get pipelinerun -n cicd -l tekton.dev/pipeline=amactive-build-api -w
+---
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: amactive-build-api-manual-
+  namespace: cicd
+  labels:
+    tekton.dev/pipeline: amactive-build-api
+    trigger: manual
+spec:
+  pipelineRef:
+    name: amactive-build-api
+  timeouts:
+    pipeline: 30m
+    tasks: 20m
+  taskRunTemplate:
+    serviceAccountName: tekton-amactive
+    podTemplate:
+      nodeSelector:
+        workload: cicd
+      securityContext:
+        fsGroup: 1000
+  params:
+    - name: git-revision
+      value: "REPLACE_WITH_SHORT_SHA"
+    - name: image-tag
+      value: "sha-REPLACE_WITH_SHORT_SHA"
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: "5Gi"
+          storageClassName: local-path
+    - name: docker-credentials
+      secret:
+        secretName: harbor-push-amactive
+        items:
+          - key: .dockerconfigjson
+            path: config.json

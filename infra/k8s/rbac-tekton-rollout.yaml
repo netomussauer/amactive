@@ -1,0 +1,51 @@
+# Concede ao ServiceAccount do Tekton (cicd/tekton-amactive) permissão para
+# reiniciar os Deployments deste namespace após um push de imagem bem
+# sucedido — os Deployments usam a tag :latest (sem mudança no manifesto a
+# cada build), então nem kubectl nem o ArgoCD reiniciam os pods sozinhos; o
+# pipeline precisa fazer isso explicitamente (ver task "rollout-restart" em
+# infra/tekton/pipeline-api.yaml e pipeline-web.yaml). Mesmo padrão já usado
+# pelo amfit (infra/k8s/rbac-tekton-rollout.yaml) e pelo realtpmsys
+# (infra/k8s/tekton-rollout-rbac.yaml).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-rollout
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive"
+    app.kubernetes.io/component: "ci-rbac"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-rollout
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive"
+    app.kubernetes.io/component: "ci-rbac"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-rollout
+subjects:
+  - kind: ServiceAccount
+    name: tekton-amactive
+    namespace: cicd

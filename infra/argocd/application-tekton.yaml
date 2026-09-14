@@ -1,0 +1,53 @@
+# ArgoCD Application secundária — gerencia os manifestos Tekton do AMACTIVE.
+#
+# Separada da Application principal porque:
+#   - Recursos vivem em ns cicd (não amactive)
+#   - ServiceAccount/RBAC/Triggers precisam de escopo distinto
+#
+# Aplicar uma única vez (manual, fora do escopo desta tarefa — ver
+# infra/README.md):
+#   kubectl apply -f infra/argocd/application-tekton.yaml
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: amactive-tekton
+  namespace: cicd
+  labels:
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: "http://gitea-http.cicd.svc.cluster.local:3000/labadmin/amactive.git"
+    targetRevision: main
+    path: "infra/tekton"
+    directory:
+      recurse: true
+      # sealedsecret-webhook.yaml.example e os pipelinerun-*-manual.yaml.example
+      # são apenas documentação/template — nunca devem ser sincronizados.
+      exclude: "*.example"
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: cicd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: "5s"
+        factor: 2
+        maxDuration: "3m"
