@@ -49,7 +49,19 @@ from amactive.contexts.identidade.infrastructure.persistence.models import Usuar
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://amactive:amactive@localhost:5432/amactive_test"
 )
-_MIGRATIONS_DIR = Path(__file__).resolve().parents[4] / "migrations"
+
+
+def _migrations_dir() -> Path:
+    """Calculado sob demanda (não em import time): a Task de CI
+    `python-test` (ver infra/tekton/task-python-test.yaml) copia só
+    `apps/api/` para o workspace, sem o restante do monorepo — se isso
+    fosse uma constante avaliada ao importar o módulo, o `parents[4]`
+    (calibrado para a árvore completa do repo) levantaria `IndexError`
+    apenas por coletar este arquivo, mesmo rodando só `pytest -m unit`
+    (o pytest importa todo `conftest.py` na fase de coleta, antes de
+    filtrar por marker). Só é de fato chamada por `_aplicar_migrations`,
+    que só roda quando um teste de integração real é executado."""
+    return Path(__file__).resolve().parents[4] / "migrations"
 
 
 def _asyncpg_dsn(url: str) -> str:
@@ -88,7 +100,7 @@ async def _aplicar_migrations() -> None:
         aplicadas = {
             row["versao"] for row in await conn.fetch("SELECT versao FROM schema_migrations")
         }
-        for arquivo in sorted(_MIGRATIONS_DIR.glob("*.up.sql")):
+        for arquivo in sorted(_migrations_dir().glob("*.up.sql")):
             if arquivo.name in aplicadas:
                 continue
             await conn.execute(arquivo.read_text(encoding="utf-8"))

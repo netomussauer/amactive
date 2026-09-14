@@ -40,12 +40,22 @@ def _asyncpg_dsn(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-_UP_SQL = (_MIGRATIONS_DIR / "000004_produto_desconto_promocional.up.sql").read_text(
-    encoding="utf-8"
-)
-_DOWN_SQL = (_MIGRATIONS_DIR / "000004_produto_desconto_promocional.down.sql").read_text(
-    encoding="utf-8"
-)
+# Lidos sob demanda (não em import time) pelas mesmas razões de
+# `conftest.py::_migrations_dir` — a Task de CI `python-test` copia só
+# `apps/api/` para o workspace, sem `migrations/` na raiz do monorepo; ler
+# esses arquivos como constante de módulo quebraria a coleta deste arquivo
+# de teste mesmo rodando só `pytest -m unit` (que nem seleciona nada daqui).
+def _up_sql() -> str:
+    return (_MIGRATIONS_DIR / "000004_produto_desconto_promocional.up.sql").read_text(
+        encoding="utf-8"
+    )
+
+
+def _down_sql() -> str:
+    return (_MIGRATIONS_DIR / "000004_produto_desconto_promocional.down.sql").read_text(
+        encoding="utf-8"
+    )
+
 
 _QUERY_COLUNA_EXISTE = """
     SELECT 1 FROM information_schema.columns
@@ -63,10 +73,10 @@ async def test_migration_down_remove_coluna_e_up_recria_com_constraint(test_engi
     try:
         assert await conn.fetchval(_QUERY_COLUNA_EXISTE) == 1
 
-        await conn.execute(_DOWN_SQL)
+        await conn.execute(_down_sql())
         assert await conn.fetchval(_QUERY_COLUNA_EXISTE) is None
 
-        await conn.execute(_UP_SQL)
+        await conn.execute(_up_sql())
         assert await conn.fetchval(_QUERY_COLUNA_EXISTE) == 1
 
         # A constraint de range volta a valer após o up.sql reaplicado.
@@ -88,7 +98,7 @@ async def test_migration_down_remove_coluna_e_up_recria_com_constraint(test_engi
         # Garante que o schema volta ao estado esperado pelo resto da suíte
         # mesmo se uma asserção acima falhar no meio do teste.
         if await conn.fetchval(_QUERY_COLUNA_EXISTE) is None:
-            await conn.execute(_UP_SQL)
+            await conn.execute(_up_sql())
         await conn.close()
 
 

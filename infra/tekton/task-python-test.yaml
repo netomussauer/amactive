@@ -82,8 +82,15 @@ spec:
         echo ">>> mypy src"
         mypy src
 
-        echo ">>> pytest -m unit"
-        pytest -m unit
+        echo ">>> pytest -m unit --ignore=tests/integration"
+        # --ignore evita a fase de coleta sequer tocar tests/integration/
+        # (dependências de Postgres real ali à parte) — reforço além do
+        # marker -m unit, já que o pytest importa todo conftest.py achado
+        # na coleta antes de filtrar por marker; sem o --ignore, um bug em
+        # tests/integration/conftest.py quebraria até uma rodada só-unit
+        # (foi exatamente o que aconteceu antes desta linha existir, ver
+        # apps/api/tests/integration/conftest.py::_migrations_dir).
+        pytest -m unit --ignore=tests/integration
       computeResources:
         requests:
           cpu: "250m"
