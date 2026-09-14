@@ -309,3 +309,4 @@ documentado pelo realtpmsys neste cluster — usar o `dnsConfig` de
   localmente.
 - Migrar armazenamento de imagens de produto para MinIO/S3 — decisão já
   tomada de NÃO fazer isso agora; o PVC local-path é a solução deste MVP.
+# teste de webhook - 2026-09-14T18:40:42Z
