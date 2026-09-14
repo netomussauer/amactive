@@ -1,0 +1,98 @@
+---
+# Task de git clone com imagem baseada em glibc (Debian) — cópia da
+# `amfit-git-clone` do projeto amfit (mesmo cluster/namespace cicd),
+# renomeada para amactive por isolamento entre projetos: os pipelines desta
+# task-list já criam sua própria `amactive-kaniko-build-push` em vez de
+# reaproveitar a `kaniko-build-push` genérica do lab (mesmo racional —
+# consistência de nomeação por projeto). A `amfit-git-clone` original tinha
+# sido criada para contornar um bug real de musl libc no `getaddrinfo()`
+# (imagens Alpine, ex. `alpine/git`) ao resolver hostnames customizados via
+# o plugin `hosts` do CoreDNS — ver amfit/infra/cluster/archive/LAB-BUGS.md
+# Bug #1/#2. `bitnami/git:latest` (Debian/glibc) não tem esse problema.
+#
+# Mantém a interface compatível com a Task `git-clone` do lab (params url,
+# revision, depth + workspace source + results commit, url) para evitar
+# divergência se a Task do lab for corrigida no futuro.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: amactive-git-clone
+  namespace: cicd
+  labels:
+    app.kubernetes.io/name: amactive-tekton
+    app.kubernetes.io/component: ci-task
+    app.kubernetes.io/managed-by: argocd
+    environment: dev
+    lab_id: lab-k8s-01
+    lab_owner: jose.mussauer
+spec:
+  description: |
+    Clone shallow de um repositorio Git para o workspace `source`, usando
+    imagem com glibc (Debian) para contornar o bug de musl getaddrinfo
+    quando ha entries no plugin `hosts` do CoreDNS.
+  workspaces:
+    - name: source
+      description: Workspace destino do clone.
+  params:
+    - name: url
+      description: URL do repositorio Git.
+      type: string
+    - name: revision
+      description: "Branch, tag ou commit SHA (default: HEAD)."
+      type: string
+      default: HEAD
+    - name: depth
+      description: "Profundidade do clone (default: 1; use 0 para clone completo)."
+      type: string
+      default: "1"
+  results:
+    - name: commit
+      description: SHA do commit clonado.
+    - name: url
+      description: URL usada no clone.
+  steps:
+    - name: clone
+      image: bitnami/git:latest
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/usr/bin/env bash
+        set -eu
+
+        echo ">>> git version"
+        git --version
+
+        # Volumes NFS preservam a ownership do servidor NFS, que não bate
+        # com o UID do container — o "dubious ownership" do git (proteção
+        # da CVE-2022-24765) bloqueia qualquer operação no workspace nesse
+        # caso. local-path (storageClass usada pelo PVC do amactive) não
+        # tem esse problema, então isso é um no-op inofensivo aqui — seguro
+        # incluir sempre, mesma linha do amfit-git-clone original.
+        git config --global --add safe.directory "$(workspaces.source.path)"
+
+        echo ">>> Inicializando repo em $(workspaces.source.path)"
+        git init -q
+        git remote add origin "$(params.url)"
+
+        if [ "$(params.depth)" = "0" ]; then
+          echo ">>> Clone completo"
+          git fetch --tags origin
+        else
+          echo ">>> Clone shallow (depth=$(params.depth)) revision=$(params.revision)"
+          git fetch --depth="$(params.depth)" --tags origin "$(params.revision)" \
+            || git fetch --depth="$(params.depth)" --tags origin
+        fi
+
+        git checkout "$(params.revision)" 2>/dev/null || git checkout FETCH_HEAD
+
+        COMMIT_SHA=$(git rev-parse HEAD)
+        printf "%s" "$COMMIT_SHA" > "$(results.commit.path)"
+        printf "%s" "$(params.url)" > "$(results.url.path)"
+
+        echo ">>> OK $(params.url) @ $COMMIT_SHA"
+      computeResources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi

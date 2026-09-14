@@ -15,10 +15,12 @@
 # infra/k8s/api/migrations-configmap.yaml.
 #
 # Tasks usadas:
-#   - amfit-git-clone            → reutilizada do ns cicd (debian-based,
-#                                   contorna bug de musl getaddrinfo do
-#                                   alpine/git padrão do lab — mesmo motivo
-#                                   documentado no realtpmsys)
+#   - amactive-git-clone         → local (infra/tekton/task-amactive-git-clone.yaml),
+#                                   cópia da amfit-git-clone do ns cicd
+#                                   (debian-based, contorna bug de musl
+#                                   getaddrinfo do alpine/git padrão do lab
+#                                   — mesmo motivo documentado no realtpmsys),
+#                                   renomeada por projeto por isolamento
 #   - python-test                → local (infra/tekton/task-python-test.yaml)
 #   - amactive-kaniko-build-push → local (infra/tekton/task-kaniko.yaml)
 #
@@ -69,7 +71,7 @@ spec:
     - name: git-clone
       taskRef:
         kind: Task
-        name: amfit-git-clone
+        name: amactive-git-clone
       params:
         - name: url
           value: "$(params.git-url)"

@@ -66,7 +66,7 @@ spec:
     - name: git-clone
       taskRef:
         kind: Task
-        name: amfit-git-clone
+        name: amactive-git-clone
       params:
         - name: url
           value: "$(params.git-url)"
