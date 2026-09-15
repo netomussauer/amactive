@@ -4,6 +4,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _INSECURE_JWT_SECRET = "change-me-in-env"
+_INSECURE_CREDENCIAL_CANAL_ENCRYPTION_KEY = "change-me-in-env"
 
 
 class Settings(BaseSettings):
@@ -32,6 +33,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 60 * 8
 
+    # Chave simétrica usada por `pgp_sym_encrypt`/`pgp_sym_decrypt` (pgcrypto)
+    # para cifrar/decifrar `credencial_canal.access_token_cifrado`/
+    # `client_secret_cifrado` — ver docs/design-integracao-nuvemshop.md
+    # §7.2. Mesmo padrão de `jwt_secret`: sem default seguro em produção,
+    # nunca logada, sempre passada como bind parameter (nunca interpolada
+    # na string SQL — ver `infrastructure/persistence/repositories.py`,
+    # `SqlAlchemyCredencialCanalRepository`).
+    credencial_canal_encryption_key: str = _INSECURE_CREDENCIAL_CANAL_ENCRYPTION_KEY
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
@@ -42,6 +52,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET precisa ser definido com um valor seguro fora do ambiente "
                 "de desenvolvimento (ENVIRONMENT != 'development')."
+            )
+        if (
+            self.environment != "development"
+            and self.credencial_canal_encryption_key == _INSECURE_CREDENCIAL_CANAL_ENCRYPTION_KEY
+        ):
+            raise ValueError(
+                "CREDENCIAL_CANAL_ENCRYPTION_KEY precisa ser definido com um valor seguro fora "
+                "do ambiente de desenvolvimento (ENVIRONMENT != 'development')."
             )
         return self
 

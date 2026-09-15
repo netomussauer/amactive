@@ -25,6 +25,9 @@ from amactive.contexts.identidade.infrastructure.api.router import router as ide
 from amactive.contexts.identidade.infrastructure.api.router import (
     usuarios_router as identidade_usuarios_router,
 )
+from amactive.contexts.integracao_canais.infrastructure.api.router import (
+    router as integracao_canais_router,
+)
 from amactive.contexts.relatorios.infrastructure.api.router import router as relatorios_router
 from amactive.contexts.vendas.infrastructure.api.router import router as vendas_router
 from amactive.core.config import settings
@@ -103,6 +106,10 @@ app.include_router(catalogo_estoque_router)
 app.include_router(vendas_router)
 app.include_router(cadastros_router)
 app.include_router(relatorios_router)
+# Único router com um endpoint público (sem JWT) — ver
+# integracao_canais/infrastructure/api/router.py para a justificativa
+# completa (docs/design-integracao-nuvemshop.md §5.1).
+app.include_router(integracao_canais_router)
 
 # Serve as imagens de produto gravadas em disco local (ver
 # catalogo_estoque/infrastructure/storage.py e docs/data-model.md decisão

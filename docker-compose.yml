@@ -76,6 +76,42 @@ services:
     mem_reservation: 128m
     cpus: "0.5"
 
+  worker:
+    # Mesma imagem da API (mesmo Dockerfile/contexto) — só o `command` muda,
+    # ver docs/design-integracao-nuvemshop.md §4.5/§9 item 9 ("mesma imagem
+    # da API, command diferente").
+    build:
+      context: ./apps/api
+    container_name: amactive-worker
+    restart: unless-stopped
+    command: ["python", "-m", "amactive.scripts.run_worker"]
+    env_file:
+      - ./apps/api/.env
+    environment:
+      # Mesmo padrão do serviço `api` acima — dentro da rede do Compose o
+      # Postgres só é alcançável pelo hostname do serviço `db`.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-amactive}:${POSTGRES_PASSWORD:-amactive}@db:5432/${POSTGRES_DB:-amactive}
+    volumes:
+      - ./apps/api/src:/app/src
+      - ./migrations:/app/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      # Espera a API terminar de aplicar as migrations pendentes (o
+      # `docker-entrypoint.sh` de ambos os serviços roda
+      # `apply_migrations.py` antes do `command`) antes de subir — evita as
+      # duas réplicas de `apply_migrations.py` corrida entre si na primeira
+      # subida do zero. Não expõe porta nem tem `Service` — não recebe
+      # tráfego (design §4.5: "sem Service/porta exposta").
+      api:
+        condition: service_healthy
+    # Sem porta exposta nem healthcheck HTTP (não há servidor neste
+    # processo) — perfil de recurso equivalente ao da API (worker solitário,
+    # baixo volume, ver design §4.5/avaliação §7).
+    mem_limit: 256m
+    mem_reservation: 128m
+    cpus: "0.5"
+
 volumes:
   amactive_db_data:
   amactive_uploads_data:

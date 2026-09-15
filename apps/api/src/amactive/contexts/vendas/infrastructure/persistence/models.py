@@ -11,7 +11,11 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from amactive.shared_kernel.database import Base
-from amactive.shared_kernel.pg_enums import forma_pagamento_enum, status_pedido_enum
+from amactive.shared_kernel.pg_enums import (
+    forma_pagamento_enum,
+    origem_canal_pedido_enum,
+    status_pedido_enum,
+)
 
 
 class PedidoModel(Base):
@@ -31,6 +35,10 @@ class PedidoModel(Base):
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     confirmado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancelado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # migrations/000005_integracao_nuvemshop — ver docs/design-integracao-
+    # nuvemshop.md §3.1/§6.7.
+    origem_canal: Mapped[str] = mapped_column(origem_canal_pedido_enum)
+    pedido_externo_id: Mapped[str | None] = mapped_column(String(100))
 
 
 class ItemPedidoModel(Base):

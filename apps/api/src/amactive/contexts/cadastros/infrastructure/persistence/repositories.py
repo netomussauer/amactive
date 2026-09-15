@@ -7,10 +7,11 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from amactive.contexts.cadastros.domain.entities import Cliente, Fornecedor
+from amactive.contexts.cadastros.domain.entities import Cliente, Fornecedor, OrigemCadastroCliente
 from amactive.contexts.cadastros.domain.exceptions import DocumentoDuplicado
 from amactive.contexts.cadastros.infrastructure.persistence.models import (
     ClienteModel,
@@ -88,6 +89,110 @@ class SqlAlchemyClienteRepository:
         modelo.ativo = False
         await self._session.flush()
         return True
+
+    async def upsert_por_email(
+        self,
+        *,
+        email: str,
+        nome: str,
+        cpf_cnpj: str | None,
+        telefone: str | None,
+        endereco_logradouro: str | None,
+        endereco_cidade: str | None,
+        endereco_uf: str | None,
+        endereco_cep: str | None,
+        cliente_externo_id: str,
+        origem_cadastro: OrigemCadastroCliente,
+    ) -> Cliente:
+        """`INSERT ... ON CONFLICT (email) DO UPDATE` sobre o índice único
+        parcial `uq_cliente_email_nao_nulo` — ver docs/design-integracao-
+        nuvemshop.md §3.3. Atômico por construção (evita a condição de
+        corrida de um "buscar depois criar/atualizar" em duas etapas sob
+        múltiplas réplicas do worker).
+
+        `origem_cadastro` nunca é sobrescrito num conflito (reflete como o
+        registro nasceu, não o último canal que o tocou).
+        `cliente_externo_id` só é gravado via `COALESCE` se o cliente
+        existente ainda não tiver um (nunca substitui um valor já gravado).
+        Os demais campos (nome/cpf_cnpj/telefone/endereço) são sempre
+        atualizados — dados mais recentes vindos do pedido.
+        """
+        insert_stmt = pg_insert(ClienteModel).values(
+            id=uuid.uuid4(),
+            nome=nome,
+            cpf_cnpj=cpf_cnpj,
+            email=email,
+            telefone=telefone,
+            endereco_logradouro=endereco_logradouro,
+            endereco_cidade=endereco_cidade,
+            endereco_uf=endereco_uf,
+            endereco_cep=endereco_cep,
+            ativo=True,
+            criado_em=_now(),
+            cliente_externo_id=cliente_externo_id,
+            origem_cadastro=origem_cadastro.value,
+        )
+        stmt = (
+            insert_stmt.on_conflict_do_update(
+                index_elements=[ClienteModel.email],
+                index_where=ClienteModel.email.isnot(None),
+                set_={
+                    "nome": insert_stmt.excluded.nome,
+                    "cpf_cnpj": insert_stmt.excluded.cpf_cnpj,
+                    "telefone": insert_stmt.excluded.telefone,
+                    "endereco_logradouro": insert_stmt.excluded.endereco_logradouro,
+                    "endereco_cidade": insert_stmt.excluded.endereco_cidade,
+                    "endereco_uf": insert_stmt.excluded.endereco_uf,
+                    "endereco_cep": insert_stmt.excluded.endereco_cep,
+                    "cliente_externo_id": func.coalesce(
+                        ClienteModel.cliente_externo_id, insert_stmt.excluded.cliente_externo_id
+                    ),
+                    # origem_cadastro deliberadamente ausente do SET — nunca
+                    # sobrescrito num conflito.
+                },
+            )
+            # Colunas explícitas (não o `ClienteModel` inteiro) — evita
+            # depender do suporte a ORM-enabled INSERT...RETURNING para um
+            # statement dialect-specific (`ON CONFLICT`), mantendo o mesmo
+            # estilo de mapeamento manual já usado no resto deste módulo.
+            .returning(
+                ClienteModel.id,
+                ClienteModel.nome,
+                ClienteModel.cpf_cnpj,
+                ClienteModel.email,
+                ClienteModel.telefone,
+                ClienteModel.endereco_logradouro,
+                ClienteModel.endereco_cidade,
+                ClienteModel.endereco_uf,
+                ClienteModel.endereco_cep,
+                ClienteModel.ativo,
+                ClienteModel.criado_em,
+                ClienteModel.cliente_externo_id,
+                ClienteModel.origem_cadastro,
+            )
+        )
+        try:
+            resultado = await self._session.execute(stmt)
+        except IntegrityError as exc:
+            await self._session.rollback()
+            raise DocumentoDuplicado("CPF/CNPJ já cadastrado para outro cliente.") from exc
+        linha = resultado.mappings().one()
+        await self._session.flush()
+        return Cliente(
+            id=linha["id"],
+            nome=linha["nome"],
+            cpf_cnpj=linha["cpf_cnpj"],
+            email=linha["email"],
+            telefone=linha["telefone"],
+            endereco_logradouro=linha["endereco_logradouro"],
+            endereco_cidade=linha["endereco_cidade"],
+            endereco_uf=linha["endereco_uf"],
+            endereco_cep=linha["endereco_cep"],
+            ativo=linha["ativo"],
+            criado_em=linha["criado_em"],
+            cliente_externo_id=linha["cliente_externo_id"],
+            origem_cadastro=OrigemCadastroCliente(linha["origem_cadastro"]),
+        )
 
 
 class SqlAlchemyFornecedorRepository:
@@ -170,6 +275,8 @@ def _cliente_para_entidade(modelo: ClienteModel) -> Cliente:
         endereco_cep=modelo.endereco_cep,
         ativo=modelo.ativo,
         criado_em=modelo.criado_em,
+        cliente_externo_id=modelo.cliente_externo_id,
+        origem_cadastro=OrigemCadastroCliente(modelo.origem_cadastro),
     )
 
 

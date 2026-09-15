@@ -17,7 +17,7 @@ from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
-from amactive.contexts.vendas.domain.entities import Pedido, StatusPedido
+from amactive.contexts.vendas.domain.entities import OrigemCanalPedido, Pedido, StatusPedido
 
 
 @dataclass(frozen=True)
@@ -60,6 +60,8 @@ class PedidoRepository(Protocol):
         valor_total: Decimal,
         observacao: str | None,
         confirmado_em: datetime | None,
+        origem_canal: OrigemCanalPedido,
+        pedido_externo_id: str | None,
         itens: list[dict],
         pagamentos: list[dict],
     ) -> Pedido: ...

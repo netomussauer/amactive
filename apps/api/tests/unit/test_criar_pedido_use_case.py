@@ -14,7 +14,12 @@ import pytest
 
 from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoInput
 from amactive.contexts.vendas.application.use_cases.criar_pedido import CriarPedidoUseCase
-from amactive.contexts.vendas.domain.entities import FormaPagamento, Pedido, StatusPedido
+from amactive.contexts.vendas.domain.entities import (
+    FormaPagamento,
+    OrigemCanalPedido,
+    Pedido,
+    StatusPedido,
+)
 from amactive.contexts.vendas.domain.exceptions import (
     PagamentosNaoConferem,
     VarianteDeVendaInvalida,
@@ -69,6 +74,8 @@ class _PedidoRepositoryFake:
             criado_em=datetime.now(UTC),
             confirmado_em=kwargs["confirmado_em"],
             cancelado_em=None,
+            origem_canal=kwargs.get("origem_canal", OrigemCanalPedido.PDV),
+            pedido_externo_id=kwargs.get("pedido_externo_id"),
         )
 
     async def buscar_por_id(self, pedido_id):  # pragma: no cover - não usado nestes testes

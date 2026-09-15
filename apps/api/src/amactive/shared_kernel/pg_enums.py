@@ -38,6 +38,41 @@ forma_pagamento_enum = PGEnum(
     "PIX",
     "CARTAO_DEBITO",
     "CARTAO_CREDITO",
+    # Valor aditivo (migrations/000005_integracao_nuvemshop) — "pago
+    # externamente via checkout do canal", ver docs/design-integracao-
+    # nuvemshop.md §3.1.
+    "NUVEMSHOP",
     name="forma_pagamento",
     create_type=False,
+)
+
+origem_canal_pedido_enum = PGEnum("PDV", "NUVEMSHOP", name="origem_canal_pedido", create_type=False)
+
+origem_cadastro_cliente_enum = PGEnum(
+    "MANUAL", "NUVEMSHOP", name="origem_cadastro_cliente", create_type=False
+)
+
+# ─────────────────────────────────────────────────────────────
+# Vocabulário do bounded context `integracao_canais`
+# (migrations/000005_integracao_nuvemshop), ver docs/design-integracao-
+# nuvemshop.md §2.3/§6.1. `canal_integracao` é um tipo Postgres diferente de
+# `origem_canal_pedido`/`origem_cadastro_cliente` acima — cada contexto
+# nomeia/versiona seu próprio enum mesmo compartilhando o valor literal
+# "NUVEMSHOP" hoje.
+# ─────────────────────────────────────────────────────────────
+canal_integracao_enum = PGEnum("NUVEMSHOP", name="canal_integracao", create_type=False)
+
+status_webhook_evento_enum = PGEnum(
+    "PENDENTE",
+    "PROCESSADO",
+    "ERRO",
+    "CONFLITO_MANUAL",
+    name="status_webhook_evento",
+    create_type=False,
+)
+
+status_outbox_enum = PGEnum("PENDENTE", "ENVIADO", "ERRO", name="status_outbox", create_type=False)
+
+operacao_catalogo_outbox_enum = PGEnum(
+    "CRIAR", "ATUALIZAR", name="operacao_catalogo_outbox", create_type=False
 )

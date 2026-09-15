@@ -20,6 +20,19 @@ class FormaPagamento(str, Enum):
     PIX = "PIX"
     CARTAO_DEBITO = "CARTAO_DEBITO"
     CARTAO_CREDITO = "CARTAO_CREDITO"
+    # Pago externamente via checkout do canal (ex.: Nuvemshop) — detalhamento
+    # por método (PIX/cartão específico do comprador) não é replicado no MVP.
+    # Ver docs/design-integracao-nuvemshop.md §3.1.
+    NUVEMSHOP = "NUVEMSHOP"
+
+
+class OrigemCanalPedido(str, Enum):
+    """Canal de origem do pedido — ver docs/design-integracao-nuvemshop.md
+    §2.3 (nota de Ubiquitous Language: vocabulário de `vendas`, distinto de
+    `CanalIntegracao` de `integracao_canais`)."""
+
+    PDV = "PDV"
+    NUVEMSHOP = "NUVEMSHOP"
 
 
 @dataclass(frozen=True)
@@ -54,5 +67,7 @@ class Pedido:
     criado_em: datetime
     confirmado_em: datetime | None
     cancelado_em: datetime | None
+    origem_canal: OrigemCanalPedido
+    pedido_externo_id: str | None
     itens: list[ItemPedido] = field(default_factory=list)
     pagamentos: list[PagamentoPedido] = field(default_factory=list)

@@ -16,6 +16,7 @@ from amactive.contexts.catalogo_estoque.infrastructure.persistence.models import
 from amactive.contexts.vendas.domain.entities import (
     FormaPagamento,
     ItemPedido,
+    OrigemCanalPedido,
     PagamentoPedido,
     Pedido,
     StatusPedido,
@@ -53,6 +54,8 @@ class SqlAlchemyPedidoRepository:
         valor_total: Decimal,
         observacao: str | None,
         confirmado_em: datetime | None,
+        origem_canal: OrigemCanalPedido,
+        pedido_externo_id: str | None,
         itens: list[dict],
         pagamentos: list[dict],
     ) -> Pedido:
@@ -72,6 +75,8 @@ class SqlAlchemyPedidoRepository:
             criado_em=criado_em,
             confirmado_em=confirmado_em,
             cancelado_em=None,
+            origem_canal=origem_canal.value,
+            pedido_externo_id=pedido_externo_id,
         )
         self._session.add(pedido_modelo)
         await self._session.flush()
@@ -137,6 +142,8 @@ class SqlAlchemyPedidoRepository:
             criado_em=criado_em,
             confirmado_em=confirmado_em,
             cancelado_em=None,
+            origem_canal=origem_canal,
+            pedido_externo_id=pedido_externo_id,
             itens=itens_entidade,
             pagamentos=pagamentos_entidade,
         )
@@ -248,6 +255,8 @@ def _pedido_para_entidade(
         criado_em=modelo.criado_em,
         confirmado_em=modelo.confirmado_em,
         cancelado_em=modelo.cancelado_em,
+        origem_canal=OrigemCanalPedido(modelo.origem_canal),
+        pedido_externo_id=modelo.pedido_externo_id,
         itens=itens,
         pagamentos=pagamentos,
     )

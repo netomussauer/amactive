@@ -22,7 +22,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoInput
-from amactive.contexts.vendas.domain.entities import Pedido, StatusPedido
+from amactive.contexts.vendas.domain.entities import OrigemCanalPedido, Pedido, StatusPedido
 from amactive.contexts.vendas.domain.exceptions import (
     PagamentosNaoConferem,
     VarianteDeVendaInvalida,
@@ -50,6 +50,12 @@ class CriarPedidoUseCase:
         itens: list[ItemPedidoInput],
         pagamentos: list[PagamentoInput],
         usuario_id: UUID,
+        # Novos, ambos com default — 100% retrocompatível com o endpoint do
+        # PDV (docs/design-integracao-nuvemshop.md §3.1). O worker de webhook
+        # da Nuvemshop (fora do escopo deste módulo) é quem passa valores
+        # diferentes do default.
+        origem_canal: OrigemCanalPedido = OrigemCanalPedido.PDV,
+        pedido_externo_id: str | None = None,
     ) -> Pedido:
         itens_processados: list[dict] = []
         subtotal_pedido = Decimal("0.00")
@@ -99,6 +105,8 @@ class CriarPedidoUseCase:
             valor_total=valor_total,
             observacao=observacao,
             confirmado_em=datetime.now(UTC),
+            origem_canal=origem_canal,
+            pedido_externo_id=pedido_externo_id,
             itens=itens_processados,
             pagamentos=[
                 {"forma_pagamento": p.forma_pagamento, "valor": p.valor} for p in pagamentos

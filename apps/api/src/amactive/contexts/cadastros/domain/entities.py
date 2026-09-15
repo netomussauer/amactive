@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from uuid import UUID
+
+
+class OrigemCadastroCliente(str, Enum):
+    """Como o cadastro do cliente nasceu — ver docs/design-integracao-
+    nuvemshop.md §2.3/§3.3 (nota de Ubiquitous Language: vocabulário de
+    `cadastros`, distinto de `CanalIntegracao` de `integracao_canais`).
+    Nunca é sobrescrito por um upsert posterior — reflete a origem, não o
+    último canal que tocou o registro."""
+
+    MANUAL = "MANUAL"
+    NUVEMSHOP = "NUVEMSHOP"
 
 
 @dataclass(frozen=True)
@@ -20,6 +32,8 @@ class Cliente:
     endereco_cep: str | None
     ativo: bool
     criado_em: datetime
+    cliente_externo_id: str | None
+    origem_cadastro: OrigemCadastroCliente
 
 
 @dataclass(frozen=True)
