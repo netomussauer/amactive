@@ -175,6 +175,20 @@ class NuvemshopClientPort(Protocol):
         internamente."""
         ...
 
+    async def listar_pedidos_recentes(self, *, desde: datetime) -> list[str]:
+        """`GET /orders?since=...` (design §5.5/§7.4) — usado
+        exclusivamente pelo job de reconciliação (`ReconciliarPedidosUseCase`,
+        passo 12). Retorna só os `pedido_externo_id` candidatos, NUNCA os
+        pedidos completos — cada um é processado depois via `buscar_pedido`,
+        dentro do mesmo fluxo já testado de `ProcessarWebhookPedidoUseCase`.
+
+        Paginação real (`page`/`per_page`, máx. 200, seguindo o header
+        `Link` — design §7.4) é detalhe de implementação do client
+        (`infrastructure/nuvemshop/client.py`): este Protocol/os casos de
+        uso que o consomem nunca veem uma página isolada, só a lista
+        completa já concatenada."""
+        ...
+
 
 class WebhookVerifierPort(Protocol):
     """HMAC-SHA256 do corpo bruto do webhook — ver design §5.1.
@@ -206,6 +220,21 @@ class WebhookEventoRepository(Protocol):
     async def marcar_erro(self, evento_id: UUID, *, detalhe: str) -> None: ...
 
     async def marcar_conflito_manual(self, evento_id: UUID, *, detalhe: str) -> None: ...
+
+    async def existe_evento_para_recurso(
+        self, *, canal: CanalIntegracao, id_recurso_externo: str
+    ) -> bool:
+        """`SELECT EXISTS(...) WHERE canal = ... AND id_recurso_externo =
+        ...` — usado por `ReconciliarPedidosUseCase` (design §5.5/passo 12)
+        para decidir se um `pedido_externo_id` descoberto via listagem
+        precisa de um `WebhookEvento` novo. Deliberadamente ignora
+        `tipo_evento` (diferente de `evento_externo_id`, que o inclui) —
+        um pedido que já chegou por QUALQUER caminho (webhook normal
+        `order/paid` ou uma execução anterior deste próprio job,
+        independentemente do `status` atual: `PENDENTE`/`PROCESSADO`/
+        `ERRO`/`CONFLITO_MANUAL`) nunca deve gerar um segundo evento
+        redundante."""
+        ...
 
 
 class MapeamentoVarianteRepository(Protocol):

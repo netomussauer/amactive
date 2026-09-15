@@ -108,6 +108,9 @@ class _NuvemshopClientFake:
     ) -> None:
         raise NotImplementedError("Não exercido por ProcessarWebhookPedidoUseCase.")
 
+    async def listar_pedidos_recentes(self, *, desde: datetime) -> list[str]:
+        raise NotImplementedError("Não exercido por ProcessarWebhookPedidoUseCase.")
+
 
 async def _registrar_evento(
     db_session: AsyncSession, *, id_recurso_externo: str, tipo_evento: str = "order/paid"

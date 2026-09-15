@@ -12,13 +12,23 @@ rollout do Kubernetes") ou `SIGINT` (Ctrl+C local), quando desliga
 graciosamente: nunca interrompe um tick em andamento, só para de iniciar
 o próximo.
 
-Nesta versão (design §9 passos 7 e 8), o worker processa, no mesmo tick, as
-filas de `integracao_estoque_outbox` (`PublicarEstoqueCanalUseCase`) e
+Nesta versão (design §9 passos 7, 8 e 12), o worker processa, no mesmo tick,
+as filas de `integracao_estoque_outbox` (`PublicarEstoqueCanalUseCase`) e
 `integracao_catalogo_outbox` (`PublicarCatalogoCanalUseCase`) — a fila de
-`webhook_evento` (`ProcessarWebhookPedidoUseCase`) ainda não é consumida por
-este loop. A expectativa do design (§4.5) é que os três consumos passem a
-coexistir no mesmo processo/loop, não que cada fila ganhe um `Deployment`
-próprio.
+`webhook_evento` alimentada pelo endpoint de webhook (`POST
+/integracoes/nuvemshop/webhooks`) ainda não é consumida por este loop
+(gap fora do escopo do passo 12/reconciliação, que só invoca
+`ProcessarWebhookPedidoUseCase` diretamente para os eventos que ELE MESMO
+descobre e registra — ver `ReconciliarPedidosUseCase`). A expectativa do
+design (§4.5) é que os consumos passem a coexistir no mesmo processo/loop,
+não que cada fila ganhe um `Deployment` próprio.
+
+Além disso, a cada `_INTERVALO_RECONCILIACAO` (não a cada tick de
+`_TICK_SEGUNDOS` — ver justificativa junto à constante, abaixo), o worker
+roda `ReconciliarPedidosUseCase` (design §5.5/§9 passo 12): descobre
+pedidos "perdidos" (nunca entregues via webhook, ex.: AMACTIVE fora do ar
+por mais de 48h) via listagem paginada da Nuvemshop e os processa pelo
+mesmo `ProcessarWebhookPedidoUseCase` do fluxo normal.
 
 A credencial da Nuvemshop é resolvida uma única vez no startup (design
 §7.2: "leitura ... uma vez no startup do worker") e o `NuvemshopHttpClient`
@@ -37,10 +47,14 @@ from __future__ import annotations
 import asyncio
 import signal
 import sys
+from datetime import UTC, datetime, timedelta
 from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from amactive.contexts.integracao_canais.application.use_cases.processar_webhook_pedido import (
+    ProcessarWebhookPedidoUseCase,
+)
 from amactive.contexts.integracao_canais.application.use_cases.publicar_catalogo_canal import (
     LIMITE_LOTE_PADRAO as LIMITE_LOTE_PADRAO_CATALOGO,
 )
@@ -53,10 +67,19 @@ from amactive.contexts.integracao_canais.application.use_cases.publicar_estoque_
 from amactive.contexts.integracao_canais.application.use_cases.publicar_estoque_canal import (
     PublicarEstoqueCanalUseCase,
 )
+from amactive.contexts.integracao_canais.application.use_cases.reconciliar_pedidos import (
+    ReconciliarPedidosUseCase,
+)
 from amactive.contexts.integracao_canais.domain.entities import CanalIntegracao
 from amactive.contexts.integracao_canais.domain.exceptions import CredencialCanalAusente
+from amactive.contexts.integracao_canais.infrastructure.gateways.cadastros_gateway import (
+    CadastrosIntegracaoGateway,
+)
 from amactive.contexts.integracao_canais.infrastructure.gateways.catalogo_gateway import (
     CatalogoIntegracaoGateway,
+)
+from amactive.contexts.integracao_canais.infrastructure.gateways.vendas_gateway import (
+    VendasIntegracaoGateway,
 )
 from amactive.contexts.integracao_canais.infrastructure.metrics import integracao_outbox_pendente
 from amactive.contexts.integracao_canais.infrastructure.nuvemshop.client import (
@@ -67,6 +90,7 @@ from amactive.contexts.integracao_canais.infrastructure.persistence.repositories
     SqlAlchemyIntegracaoCatalogoOutboxRepository,
     SqlAlchemyIntegracaoEstoqueOutboxRepository,
     SqlAlchemyMapeamentoVarianteRepository,
+    SqlAlchemyWebhookEventoRepository,
 )
 from amactive.shared_kernel.database import async_session_factory
 
@@ -75,6 +99,19 @@ from amactive.shared_kernel.database import async_session_factory
 # entre "venda no PDV"/"edição de produto" e a publicação na Nuvemshop
 # (design §9 item 7: "dentro de segundos").
 _TICK_SEGUNDOS: Final = 2.0
+
+# Cadência do job de reconciliação (design §5.5/§9 passo 12) — muito mais
+# baixa que `_TICK_SEGUNDOS`: rodar a cada 2s estressaria o rate limit da
+# Nuvemshop (2 req/s, compartilhado com estoque/catálogo/webhook) à toa,
+# listando pedidos que, na esmagadora maioria das vezes, já chegaram pelo
+# webhook normal segundos antes. O risco mitigado (avaliação §5) é "AMACTIVE
+# fora do ar por mais de 48h" — não há necessidade de reagir em segundos, só
+# de eventualmente descobrir o que o webhook perdeu. 1h é um meio-termo
+# razoável para um MVP entre o "job diário" citado pela avaliação §3.5/§5 e
+# uma reação mais ágil (qualquer valor entre 1h e 24h seria defensável; não
+# configurável via env var por não haver necessidade clara disso hoje —
+# ajustar aqui se a operação real pedir outra cadência).
+_INTERVALO_RECONCILIACAO: Final = timedelta(hours=1)
 
 
 async def _resolver_client_nuvemshop() -> NuvemshopHttpClient:
@@ -128,6 +165,59 @@ async def _processar_catalogo(session: AsyncSession, nuvemshop_client: Nuvemshop
     return processados
 
 
+async def _processar_reconciliacao(
+    session: AsyncSession, nuvemshop_client: NuvemshopHttpClient
+) -> int:
+    """Uma execução completa de `ReconciliarPedidosUseCase` (design §5.5) —
+    chamada por `_processar_reconciliacao_se_devido` só quando o intervalo
+    de cadência (`_INTERVALO_RECONCILIACAO`) já decorreu, nunca a cada
+    tick."""
+    webhook_repo = SqlAlchemyWebhookEventoRepository(session)
+    processar_webhook_pedido = ProcessarWebhookPedidoUseCase(
+        nuvemshop_client=nuvemshop_client,
+        cliente_integracao=CadastrosIntegracaoGateway(session),
+        mapeamento_variante_repository=SqlAlchemyMapeamentoVarianteRepository(session),
+        pedido_integracao=VendasIntegracaoGateway(session),
+        webhook_evento_repository=webhook_repo,
+    )
+    use_case = ReconciliarPedidosUseCase(
+        nuvemshop_client=nuvemshop_client,
+        webhook_evento_repository=webhook_repo,
+        processar_webhook_pedido=processar_webhook_pedido,
+    )
+    # `confirmar_apos_cada_pedido=session.commit` — ver docstring de
+    # `ReconciliarPedidosUseCase.executar` para a razão (o rollback completo
+    # de `VendasIntegracaoGateway.confirmar_pedido_externo` em caso de
+    # `PedidoExternoJaProcessado` desfaria pedidos anteriores desta mesma
+    # execução se não fossem confirmados individualmente).
+    return await use_case.executar(confirmar_apos_cada_pedido=session.commit)
+
+
+async def _processar_reconciliacao_se_devido(
+    nuvemshop_client: NuvemshopHttpClient, ultima_execucao_em: datetime | None
+) -> datetime | None:
+    """Controle de cadência do job de reconciliação (design §9 passo 12):
+    compara o relógio de parede contra o timestamp da última execução,
+    mantido em memória do próprio processo (não persistido — uma
+    reinicialização do worker apenas antecipa a próxima execução, o que é
+    aceitável para um job de segurança de baixa prioridade). Só abre uma
+    sessão/transação quando o intervalo já decorreu — nunca a cada tick de
+    `_TICK_SEGUNDOS`."""
+    agora = datetime.now(UTC)
+    if ultima_execucao_em is not None and (agora - ultima_execucao_em) < _INTERVALO_RECONCILIACAO:
+        return ultima_execucao_em
+
+    async with async_session_factory() as session:
+        try:
+            descobertos = await _processar_reconciliacao(session, nuvemshop_client)
+        except Exception:
+            await session.rollback()
+            raise
+    if descobertos:
+        print(f"[worker] reconciliação: {descobertos} pedido(s) perdido(s) descoberto(s).")
+    return agora
+
+
 async def _processar_um_tick(nuvemshop_client: NuvemshopHttpClient) -> None:
     """Uma sessão/transação por tick — nunca reaproveitada entre ticks
     (mesmo princípio de `get_db_session`: uma sessão por unidade de
@@ -153,14 +243,37 @@ async def _executar_loop(parar: asyncio.Event) -> None:
     nuvemshop_client = await _resolver_client_nuvemshop()
     print(
         "[worker] iniciado — consumindo integracao_estoque_outbox e "
-        f"integracao_catalogo_outbox a cada {_TICK_SEGUNDOS}s (design §4.5/§9 passos 7/8)."
+        f"integracao_catalogo_outbox a cada {_TICK_SEGUNDOS}s (design §4.5/§9 passos 7/8); "
+        f"reconciliação de pedidos (§5.5/§9 passo 12) a cada {_INTERVALO_RECONCILIACAO}."
     )
+    # Timestamp da última execução do job de reconciliação, em memória do
+    # processo (design §9 passo 12) — `None` até a primeira execução, que
+    # acontece assim que o worker sobe (não espera um `_INTERVALO_RECONCILIACAO`
+    # inicial): um worker recém-iniciado é justamente o momento em que faz
+    # mais sentido checar por pedidos perdidos enquanto esteve fora do ar.
+    ultima_reconciliacao_em: datetime | None = None
     try:
         while not parar.is_set():
             try:
                 await _processar_um_tick(nuvemshop_client)
             except Exception as exc:  # noqa: BLE001 — 1 tick com falha nunca derruba o worker
                 print(f"[worker] falha no tick (será tentado novamente): {exc}", file=sys.stderr)
+
+            try:
+                ultima_reconciliacao_em = await _processar_reconciliacao_se_devido(
+                    nuvemshop_client, ultima_reconciliacao_em
+                )
+            except Exception as exc:  # noqa: BLE001 — idem: nunca derruba o worker
+                print(
+                    f"[worker] falha na reconciliação (será tentada novamente no próximo "
+                    f"intervalo de {_INTERVALO_RECONCILIACAO}): {exc}",
+                    file=sys.stderr,
+                )
+                # Mesmo em falha, marca "tentado agora" — evita martelar a
+                # Nuvemshop a cada tick de 2s enquanto o erro persistir
+                # (ex.: credencial revogada); a próxima tentativa só ocorre
+                # depois de um `_INTERVALO_RECONCILIACAO` completo.
+                ultima_reconciliacao_em = datetime.now(UTC)
 
             try:
                 # Espera até o próximo tick, mas acorda imediatamente se

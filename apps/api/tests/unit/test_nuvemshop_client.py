@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -238,6 +239,61 @@ async def test_atualizar_estoque_variante_monta_o_path_com_produto_e_variante() 
     await client.atualizar_estoque_variante(
         produto_externo_id="10", variante_externo_id="20", quantidade=5
     )
+
+
+# ── listar_pedidos_recentes ──
+async def test_listar_pedidos_recentes_pagina_via_header_link_e_concatena_ids() -> None:
+    chamadas: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        chamadas.append(request)
+        if len(chamadas) == 1:
+            assert request.method == "GET"
+            assert request.url.path == f"/{NUVEMSHOP_API_VERSION}/123456/orders"
+            assert request.url.params["page"] == "1"
+            assert request.url.params["per_page"] == "200"
+            assert "since" in request.url.params
+            proxima_url = str(
+                request.url.copy_with(params={**dict(request.url.params), "page": "2"})
+            )
+            return httpx.Response(
+                200,
+                json=[{"id": 1}, {"id": 2}],
+                headers={"Link": f'<{proxima_url}>; rel="next"'},
+            )
+        assert len(chamadas) == 2
+        # A URL `next` já vem com todos os query params corretos — não deve
+        # reenviar `page`/`per_page`/`since` de novo por fora dela.
+        return httpx.Response(200, json=[{"id": 3}])
+
+    client = _client_com_transporte(handler)
+
+    ids = await client.listar_pedidos_recentes(desde=datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert ids == ["1", "2", "3"]
+    assert len(chamadas) == 2
+
+
+async def test_listar_pedidos_recentes_sem_link_header_para_apos_primeira_pagina() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[{"id": 42}])
+
+    client = _client_com_transporte(handler)
+
+    ids = await client.listar_pedidos_recentes(desde=datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert ids == ["42"]
+
+
+async def test_listar_pedidos_recentes_lista_vazia_nao_chama_a_api_de_novo() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=[])
+
+    client = _client_com_transporte(handler)
+
+    ids = await client.listar_pedidos_recentes(desde=datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert ids == []
 
 
 # ── TokenBucketRateLimiter — teste de tempo real ──

@@ -116,6 +116,9 @@ class _NuvemshopClientCatalogoFake:
     ) -> None:
         raise NotImplementedError("Não exercido por PublicarCatalogoCanalUseCase.")
 
+    async def listar_pedidos_recentes(self, *, desde: datetime) -> list[str]:
+        raise NotImplementedError("Não exercido por PublicarCatalogoCanalUseCase.")
+
     def _levantar_se_necessario(self, produto: ProdutoParaPublicacao) -> None:
         if (
             not self._ja_falhou

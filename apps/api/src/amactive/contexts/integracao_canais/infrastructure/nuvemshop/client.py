@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from datetime import datetime
 from typing import Any, Final
 
 import httpx
@@ -50,6 +51,11 @@ NUVEMSHOP_API_VERSION: Final = "2025-03"
 _EMAIL_CONTATO_USER_AGENT: Final = "contato@amactive.dev"
 
 _TIMEOUT_PADRAO_SEGUNDOS: Final = 30.0
+
+# `per_page` máximo aceito pela API da Nuvemshop para listagens paginadas
+# (avaliação §1.5/design §7.4) — usado por `listar_pedidos_recentes` para
+# minimizar o número de requisições (cada página consome rate limit).
+_PER_PAGE_MAXIMO: Final = 200
 
 
 class TokenBucketRateLimiter:
@@ -191,16 +197,65 @@ class NuvemshopHttpClient:
             json={"stock": quantidade},
         )
 
+    async def listar_pedidos_recentes(self, *, desde: datetime) -> list[str]:
+        """Implementa `NuvemshopClientPort.listar_pedidos_recentes` (design
+        §5.5/§7.4) — `GET /orders?since=...`, paginando via `page`/
+        `per_page` (máx. `_PER_PAGE_MAXIMO`) e seguindo o header `Link`
+        (`rel="next"`) até a última página. Só o `id` de cada pedido é
+        extraído — o recurso completo é buscado depois, um de cada vez, via
+        `buscar_pedido` (mesmo caminho já usado pelo processamento normal de
+        webhook)."""
+        ids: list[str] = []
+        proxima_url: str | None = f"{self._base_url}/orders"
+        proximos_params: dict[str, Any] | None = {
+            "since": desde.isoformat(),
+            "page": 1,
+            "per_page": _PER_PAGE_MAXIMO,
+        }
+        while proxima_url is not None:
+            resposta = await self._enviar("GET", proxima_url, params=proximos_params)
+            for pedido_bruto in resposta.json():
+                ids.append(str(pedido_bruto["id"]))
+
+            # Header `Link` (RFC 5988) — httpx já parseia em `resposta.links`
+            # (design §7.4: "seguindo o header Link"). Uma vez seguindo a URL
+            # `next` (que já vem com todos os query params corretos), não
+            # passamos `params` de novo — evita duplicar/conflitar com os já
+            # embutidos na URL absoluta devolvida pela Nuvemshop.
+            proximo_link = resposta.links.get("next")
+            proxima_url = proximo_link["url"] if proximo_link else None
+            proximos_params = None
+        return ids
+
     async def _request(
         self, method: str, path: str, *, json: dict[str, Any] | None = None
     ) -> dict[str, Any]:
+        resposta = await self._enviar(method, f"{self._base_url}{path}", json=json)
+        if not resposta.content:
+            return {}
+        return dict(resposta.json())
+
+    async def _enviar(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        """Núcleo compartilhado de toda chamada HTTP ao client (rate
+        limiter, métrica, tradução de erro) — usado tanto por `_request`
+        (métodos que devolvem um único recurso `dict`) quanto por
+        `listar_pedidos_recentes` (que precisa dos headers da resposta para
+        seguir a paginação via `Link`, não só do corpo)."""
         await self._limiter.adquirir()
         try:
             resposta = await self._http.request(
                 method,
-                f"{self._base_url}{path}",
+                url,
                 headers=self._headers,
                 json=json,
+                params=params,
                 timeout=_TIMEOUT_PADRAO_SEGUNDOS,
             )
         except httpx.HTTPError as exc:
@@ -209,7 +264,7 @@ class NuvemshopHttpClient:
             # rede sem resposta HTTP (rótulo sentinela `erro_rede`).
             nuvemshop_client_requisicoes_total.labels(status_code=_STATUS_CODE_ERRO_REDE).inc()
             raise NuvemshopIndisponivel(
-                f"Falha de rede ao chamar {method} {path} na Nuvemshop: {exc}"
+                f"Falha de rede ao chamar {method} {url} na Nuvemshop: {exc}"
             ) from exc
 
         nuvemshop_client_requisicoes_total.labels(status_code=str(resposta.status_code)).inc()
@@ -223,16 +278,14 @@ class NuvemshopHttpClient:
             # §4.3) — este client só propaga o erro e ajusta o rate limiter
             # local como defesa adicional (§7.3).
             raise NuvemshopIndisponivel(
-                f"Rate limit da Nuvemshop excedido em {method} {path} (429).",
+                f"Rate limit da Nuvemshop excedido em {method} {url} (429).",
                 status_code_origem=429,
             )
 
         if resposta.status_code >= 400:
             raise NuvemshopIndisponivel(
-                f"Nuvemshop respondeu {resposta.status_code} para {method} {path}: {resposta.text}",
+                f"Nuvemshop respondeu {resposta.status_code} para {method} {url}: {resposta.text}",
                 status_code_origem=resposta.status_code,
             )
 
-        if not resposta.content:
-            return {}
-        return dict(resposta.json())
+        return resposta

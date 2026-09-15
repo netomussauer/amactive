@@ -108,6 +108,9 @@ class _NuvemshopClientEstoqueFake:
         if indice < len(self._excecoes) and self._excecoes[indice] is not None:
             raise self._excecoes[indice]  # type: ignore[misc]
 
+    async def listar_pedidos_recentes(self, *, desde: datetime) -> list[str]:
+        raise NotImplementedError("Não exercido por PublicarEstoqueCanalUseCase.")
+
 
 def _use_case(
     db_session: AsyncSession, client: _NuvemshopClientEstoqueFake

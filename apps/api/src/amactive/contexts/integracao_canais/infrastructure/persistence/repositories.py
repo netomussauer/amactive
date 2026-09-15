@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, func, select, text, update
+from sqlalchemy import RowMapping, exists, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -192,6 +192,19 @@ class SqlAlchemyWebhookEventoRepository:
         # então incrementar neste repositório cobre todo motivo de conflito
         # sem precisar duplicar a chamada em cada ponto de uso.
         webhook_evento_conflito_manual_total.inc()
+
+    async def existe_evento_para_recurso(
+        self, *, canal: CanalIntegracao, id_recurso_externo: str
+    ) -> bool:
+        resultado = await self._session.execute(
+            select(
+                exists().where(
+                    WebhookEventoModel.canal == canal.value,
+                    WebhookEventoModel.id_recurso_externo == id_recurso_externo,
+                )
+            )
+        )
+        return bool(resultado.scalar())
 
 
 class SqlAlchemyMapeamentoVarianteRepository:
