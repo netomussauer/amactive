@@ -58,6 +58,7 @@ from amactive.contexts.integracao_canais.domain.exceptions import CredencialCana
 from amactive.contexts.integracao_canais.infrastructure.gateways.catalogo_gateway import (
     CatalogoIntegracaoGateway,
 )
+from amactive.contexts.integracao_canais.infrastructure.metrics import integracao_outbox_pendente
 from amactive.contexts.integracao_canais.infrastructure.nuvemshop.client import (
     NuvemshopHttpClient,
 )
@@ -102,7 +103,12 @@ async def _processar_estoque(session: AsyncSession, nuvemshop_client: NuvemshopH
         mapeamento_variante_repository=mapeamento_repo,
         outbox_repository=outbox_repo,
     )
-    return await use_case.executar(limite=LIMITE_LOTE_PADRAO_ESTOQUE)
+    processados = await use_case.executar(limite=LIMITE_LOTE_PADRAO_ESTOQUE)
+    # Gauge `integracao_outbox_pendente{fila="estoque"}` (design §8) —
+    # mesma query já necessária para o alerta operacional, nenhuma consulta
+    # nova além de `contar_pendentes` (design §2.5/§8).
+    integracao_outbox_pendente.labels(fila="estoque").set(await outbox_repo.contar_pendentes())
+    return processados
 
 
 async def _processar_catalogo(session: AsyncSession, nuvemshop_client: NuvemshopHttpClient) -> int:
@@ -115,7 +121,11 @@ async def _processar_catalogo(session: AsyncSession, nuvemshop_client: Nuvemshop
         mapeamento_variante_repository=mapeamento_repo,
         outbox_repository=outbox_repo,
     )
-    return await use_case.executar(limite=LIMITE_LOTE_PADRAO_CATALOGO)
+    processados = await use_case.executar(limite=LIMITE_LOTE_PADRAO_CATALOGO)
+    # Gauge `integracao_outbox_pendente{fila="catalogo"}` (design §8) — idem
+    # `_processar_estoque`.
+    integracao_outbox_pendente.labels(fila="catalogo").set(await outbox_repo.contar_pendentes())
+    return processados
 
 
 async def _processar_um_tick(nuvemshop_client: NuvemshopHttpClient) -> None:

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import structlog
+
 from amactive.contexts.catalogo_estoque.domain.exceptions import SaldoDeEstoqueInsuficiente
 from amactive.contexts.integracao_canais.domain.entities import WebhookEvento
 from amactive.contexts.integracao_canais.domain.exceptions import (
@@ -46,6 +48,11 @@ from amactive.shared_kernel.exceptions import ConflitoTransacional
 # entregar `order/paid` (fora do escopo Python, ver design §9 item 9).
 TIPO_EVENTO_PEDIDO_PAGO = "order/paid"
 
+# Log estruturado a cada transição de status de `webhook_evento` (design
+# §8) — sempre incluindo `evento_externo_id`, nunca o payload bruto (pode
+# conter dados pessoais do comprador) nem qualquer token/secret.
+_logger = structlog.get_logger(__name__)
+
 
 class ProcessarWebhookPedidoUseCase:
     """Ver docstring do módulo."""
@@ -70,6 +77,12 @@ class ProcessarWebhookPedidoUseCase:
             pedido_externo = await self._nuvemshop.buscar_pedido(evento.id_recurso_externo)
         except NuvemshopIndisponivel as exc:
             await self._webhook_eventos.marcar_erro(evento.id, detalhe=str(exc))
+            _logger.warning(
+                "webhook_evento.erro",
+                evento_externo_id=evento.evento_externo_id,
+                motivo="nuvemshop_indisponivel_ao_buscar_pedido",
+                detalhe=str(exc),
+            )
             return
 
         cliente_id = await self._clientes.resolver_ou_criar_por_email(
@@ -90,13 +103,17 @@ class ProcessarWebhookPedidoUseCase:
                 # Tudo ou nada (mesma filosofia de `CriarPedidoUseCase`) —
                 # qualquer item sem mapeamento cancela o evento inteiro,
                 # nunca cria um pedido parcial (design §5.3 passo 3).
-                await self._webhook_eventos.marcar_conflito_manual(
-                    evento.id,
-                    detalhe=(
-                        f"Item sem MapeamentoVarianteCanal: produto_externo_id="
-                        f"{item_externo.produto_externo_id}, variante_externo_id="
-                        f"{item_externo.variante_externo_id}."
-                    ),
+                detalhe = (
+                    f"Item sem MapeamentoVarianteCanal: produto_externo_id="
+                    f"{item_externo.produto_externo_id}, variante_externo_id="
+                    f"{item_externo.variante_externo_id}."
+                )
+                await self._webhook_eventos.marcar_conflito_manual(evento.id, detalhe=detalhe)
+                _logger.warning(
+                    "webhook_evento.conflito_manual",
+                    evento_externo_id=evento.evento_externo_id,
+                    motivo="variante_nao_mapeada",
+                    detalhe=detalhe,
                 )
                 return
             itens.append(
@@ -129,11 +146,25 @@ class ProcessarWebhookPedidoUseCase:
             # Idempotente — o pedido já existia (ex.: reconciliação e
             # webhook concorrentes). Não é erro (design §5.3/§5.2).
             await self._webhook_eventos.marcar_processado(evento.id)
+            _logger.info(
+                "webhook_evento.processado",
+                evento_externo_id=evento.evento_externo_id,
+                motivo="pedido_externo_ja_processado_idempotente",
+            )
             return
         except SaldoDeEstoqueInsuficiente as exc:
             # Maior severidade de negócio: o pedido já foi pago na
             # Nuvemshop e não pôde ser criado no AMACTIVE (design §5.4/§9).
             await self._webhook_eventos.marcar_conflito_manual(evento.id, detalhe=str(exc))
+            # Log ERROR dedicado (design §8, além da transição de status
+            # acima) — maior severidade de negócio: pedido já pago na
+            # Nuvemshop, não pôde ser criado no AMACTIVE.
+            _logger.error(
+                "webhook_evento.conflito_manual",
+                evento_externo_id=evento.evento_externo_id,
+                motivo="saldo_estoque_insuficiente",
+                detalhe=str(exc),
+            )
             return
         except PagamentosNaoConferem as exc:
             # `CriarPedidoUseCase` exige soma dos pagamentos == subtotal
@@ -147,11 +178,28 @@ class ProcessarWebhookPedidoUseCase:
             # insuficiente: pedido já pago na Nuvemshop, precisa de revisão
             # humana), nunca como erro transitório.
             await self._webhook_eventos.marcar_conflito_manual(evento.id, detalhe=str(exc))
+            _logger.warning(
+                "webhook_evento.conflito_manual",
+                evento_externo_id=evento.evento_externo_id,
+                motivo="pagamentos_nao_conferem",
+                detalhe=str(exc),
+            )
             return
         except ConflitoTransacional as exc:
             # Deadlock genuíno detectado pelo Postgres — erro transitório,
             # reprocessado no próximo tick do worker (design §4.3/§5.3).
             await self._webhook_eventos.marcar_erro(evento.id, detalhe=str(exc))
+            _logger.warning(
+                "webhook_evento.erro",
+                evento_externo_id=evento.evento_externo_id,
+                motivo="conflito_transacional",
+                detalhe=str(exc),
+            )
             return
 
         await self._webhook_eventos.marcar_processado(evento.id)
+        _logger.info(
+            "webhook_evento.processado",
+            evento_externo_id=evento.evento_externo_id,
+            pedido_externo_id=pedido_externo.pedido_externo_id,
+        )

@@ -46,6 +46,9 @@ from amactive.contexts.integracao_canais.infrastructure.api.schemas import (
     WebhookRecebidoRequest,
     WebhookRecebidoResponse,
 )
+from amactive.contexts.integracao_canais.infrastructure.metrics import (
+    webhook_evento_recebido_total,
+)
 from amactive.contexts.integracao_canais.infrastructure.nuvemshop.webhook_verifier import (
     HmacSha256WebhookVerifier,
 )
@@ -87,6 +90,11 @@ async def receber_webhook(
 
     payload_bruto = json.loads(corpo_bruto)
     payload = WebhookRecebidoRequest.model_validate(payload_bruto)
+
+    # Métrica `webhook_evento_recebido_total{tipo_evento}` (design §8) —
+    # todo webhook autenticado conta aqui, novo ou duplicado (a
+    # idempotência é uma decisão de `registrar_se_novo`, não desta métrica).
+    webhook_evento_recebido_total.labels(tipo_evento=payload.event).inc()
 
     webhook_repo = SqlAlchemyWebhookEventoRepository(session)
     await RegistrarWebhookCommand(webhook_repo).executar(

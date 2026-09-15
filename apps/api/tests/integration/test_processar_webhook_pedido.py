@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -295,6 +296,90 @@ async def test_valor_total_divergente_do_preco_amactive_marca_conflito_manual(
     estoque = await SqlAlchemyEstoqueRepository(db_session).buscar_por_variante(variante.id)
     assert estoque is not None
     assert estoque.quantidade == 10
+
+
+async def test_estoque_insuficiente_no_momento_do_processamento_marca_conflito_manual(
+    db_session: AsyncSession,
+    usuario_integracao: UsuarioModel,
+    criar_variante_com_estoque,
+) -> None:
+    """Terceiro cenário exigido por design §9 passo 10 / avaliação §2.2: o
+    saldo pode ter caído entre o momento da compra na Nuvemshop (já paga) e
+    o momento em que o worker processa o webhook — ex.: uma venda no PDV ou
+    outro pedido externo consumiu o estoque nesse intervalo. `EstoquePort`
+    (via `fn_aplicar_movimentacao_estoque`, já existente) rejeita a baixa
+    com `SaldoDeEstoqueInsuficiente`, e `CriarPedidoUseCase` propaga isso
+    após já ter tentado a baixa de algum item — a transação inteira reverte
+    (mesmo comportamento já validado para o PDV em
+    tests/integration/test_criar_pedido.py). Aqui, confirma que o webhook
+    trata isso como CONFLITO_MANUAL (pedido já pago, precisa de revisão
+    humana) em vez de deixar a exceção subir sem tratamento."""
+    variante = await criar_variante_com_estoque(quantidade_inicial=1, preco_venda="50.00")
+    mapeamento_repo = SqlAlchemyMapeamentoVarianteRepository(db_session)
+    await mapeamento_repo.upsert(
+        variante_id=variante.id,
+        canal=CanalIntegracao.NUVEMSHOP,
+        produto_externo_id="p-sem-saldo",
+        variante_externo_id="v-sem-saldo",
+    )
+    await db_session.commit()
+
+    webhook_repo = SqlAlchemyWebhookEventoRepository(db_session)
+    evento = await _registrar_evento(db_session, id_recurso_externo="pedido-sem-saldo")
+
+    pedido_externo = NuvemshopPedidoDTO(
+        pedido_externo_id="pedido-sem-saldo",
+        cliente_email="semsaldo@example.com",
+        cliente_nome="Cliente Sem Saldo",
+        cliente_cpf_cnpj=None,
+        cliente_telefone=None,
+        cliente_endereco=None,
+        cliente_externo_id="cliente-sem-saldo",
+        itens=[
+            ItemPedidoExternoDTO(
+                variante_externo_id="v-sem-saldo",
+                produto_externo_id="p-sem-saldo",
+                # Só há 1 unidade em estoque — pedido pede 5.
+                quantidade=5,
+            )
+        ],
+        valor_total=Decimal("250.00"),
+    )
+
+    antes_metrica_conflito = (
+        REGISTRY.get_sample_value("webhook_evento_conflito_manual_total") or 0.0
+    )
+
+    use_case = _montar_use_case(
+        db_session,
+        pedido_externo=pedido_externo,
+        mapeamento_repo=mapeamento_repo,
+        webhook_repo=webhook_repo,
+    )
+    await use_case.executar(evento)
+    await db_session.commit()
+
+    evento_status = await db_session.scalar(
+        text("SELECT status FROM webhook_evento WHERE id = :id"), {"id": evento.id}
+    )
+    assert evento_status == "CONFLITO_MANUAL"
+
+    # Métrica `webhook_evento_conflito_manual_total` (design §5.4/§8) —
+    # incrementada dentro de
+    # `SqlAlchemyWebhookEventoRepository.marcar_conflito_manual` — este é o
+    # cenário de maior severidade de negócio (design §8/item 6:
+    # `SaldoDeEstoqueInsuficiente` também gera um log ERROR dedicado).
+    depois_metrica_conflito = REGISTRY.get_sample_value("webhook_evento_conflito_manual_total")
+    assert depois_metrica_conflito == antes_metrica_conflito + 1
+
+    total_pedidos = await db_session.scalar(
+        text("SELECT count(*) FROM pedido WHERE pedido_externo_id = 'pedido-sem-saldo'")
+    )
+    assert total_pedidos == 0
+
+    estoque = await SqlAlchemyEstoqueRepository(db_session).buscar_por_variante(variante.id)
+    assert estoque is not None
+    assert estoque.quantidade == 1  # Rollback atômico — não foi debitado
 
 
 async def test_item_sem_mapeamento_marca_conflito_manual_sem_criar_pedido_parcial(

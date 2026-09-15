@@ -20,6 +20,7 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from prometheus_client import REGISTRY
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,10 +84,22 @@ async def test_webhook_valido_e_registrado_e_responde_200(db_session: AsyncSessi
     await _inserir_credencial_canal(db_session)
     payload = {"store_id": "store-teste", "event": "order/paid", "id": 555000111}
     corpo = json.dumps(payload).encode("utf-8")
+    antes_metrica = (
+        REGISTRY.get_sample_value("webhook_evento_recebido_total", {"tipo_evento": "order/paid"})
+        or 0.0
+    )
 
     resposta = await _post_webhook(db_session, corpo=corpo, assinatura=_assinar(corpo))
 
     assert resposta.status_code == 200, resposta.text
+
+    # Métrica `webhook_evento_recebido_total{tipo_evento}` (design §8) —
+    # incrementada no controller (`infrastructure/api/router.py`) para todo
+    # webhook autenticado.
+    depois_metrica = REGISTRY.get_sample_value(
+        "webhook_evento_recebido_total", {"tipo_evento": "order/paid"}
+    )
+    assert depois_metrica == antes_metrica + 1
 
     resultado = await db_session.execute(
         text(

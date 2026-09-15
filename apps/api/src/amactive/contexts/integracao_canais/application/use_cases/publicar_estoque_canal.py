@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from typing import Final
 
+import structlog
+
 from amactive.contexts.integracao_canais.application.use_cases._backoff_outbox import (
     calcular_proxima_tentativa_em,
 )
@@ -48,6 +50,11 @@ from amactive.contexts.integracao_canais.domain.repositories import (
 # pequeno a cada tick") — o rate limiter da Nuvemshop (2 req/s) já é o
 # limitador real de throughput, não o tamanho do lote lido do banco.
 LIMITE_LOTE_PADRAO: Final = 20
+
+# Log estruturado a cada transição de status de `integracao_estoque_outbox`
+# (design §8) — sempre incluindo `outbox_id`/`variante_id`, nunca
+# token/secret.
+_logger = structlog.get_logger(__name__)
 
 
 class PublicarEstoqueCanalUseCase:
@@ -83,6 +90,12 @@ class PublicarEstoqueCanalUseCase:
             # Ver decisão documentada no docstring do módulo — nada a
             # publicar ainda, não é uma falha.
             await self._outbox.marcar_enviado(item.id, superseded_ids=[])
+            _logger.info(
+                "integracao_estoque_outbox.enviado",
+                outbox_id=item.id,
+                variante_id=item.variante_id,
+                motivo="sem_mapeamento_ainda_nada_a_publicar",
+            )
             return
 
         try:
@@ -96,6 +109,12 @@ class PublicarEstoqueCanalUseCase:
             return
 
         await self._outbox.marcar_enviado(item.id, superseded_ids=[])
+        _logger.info(
+            "integracao_estoque_outbox.enviado",
+            outbox_id=item.id,
+            variante_id=item.variante_id,
+            quantidade_publicada=item.quantidade_publicada,
+        )
 
     async def _tratar_falha(
         self, item: IntegracaoEstoqueOutbox, exc: NuvemshopIndisponivel
@@ -107,4 +126,12 @@ class PublicarEstoqueCanalUseCase:
         )
         await self._outbox.marcar_erro_com_retry(
             item.id, detalhe=detalhe, proxima_tentativa_em=proxima_tentativa_em
+        )
+        _logger.warning(
+            "integracao_estoque_outbox.erro",
+            outbox_id=item.id,
+            variante_id=item.variante_id,
+            detalhe=detalhe,
+            tentativas=tentativas_apos_esta_falha,
+            proxima_tentativa_em=proxima_tentativa_em.isoformat(),
         )

@@ -24,11 +24,18 @@ from amactive.contexts.integracao_canais.domain.repositories import (
     ProdutoParaPublicacao,
     PublicacaoResultado,
 )
+from amactive.contexts.integracao_canais.infrastructure.metrics import (
+    nuvemshop_client_requisicoes_total,
+)
 from amactive.contexts.integracao_canais.infrastructure.nuvemshop.mappers import (
     mapear_pedido_nuvemshop,
     mapear_resultado_publicacao,
     montar_payload_produto,
 )
+
+# Rótulo sentinela para falhas de rede sem resposta HTTP (timeout, conexão
+# recusada) — nenhum `status_code` HTTP existe nesse caso (design §8).
+_STATUS_CODE_ERRO_REDE: Final = "erro_rede"
 
 # Fixada em código, nunca lida de variável de ambiente (design §7.1) — uma
 # mudança de versão da API da Nuvemshop deve ser sempre uma decisão de
@@ -197,9 +204,15 @@ class NuvemshopHttpClient:
                 timeout=_TIMEOUT_PADRAO_SEGUNDOS,
             )
         except httpx.HTTPError as exc:
+            # Métrica `nuvemshop_client_requisicoes_total{status_code}`
+            # (design §8) — todo request passa por aqui, inclusive falhas de
+            # rede sem resposta HTTP (rótulo sentinela `erro_rede`).
+            nuvemshop_client_requisicoes_total.labels(status_code=_STATUS_CODE_ERRO_REDE).inc()
             raise NuvemshopIndisponivel(
                 f"Falha de rede ao chamar {method} {path} na Nuvemshop: {exc}"
             ) from exc
+
+        nuvemshop_client_requisicoes_total.labels(status_code=str(resposta.status_code)).inc()
 
         if resposta.status_code == 429:
             reset = _ler_rate_limit_reset(resposta.headers)

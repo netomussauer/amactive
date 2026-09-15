@@ -29,6 +29,8 @@ from __future__ import annotations
 
 from typing import Final
 
+import structlog
+
 from amactive.contexts.integracao_canais.application.use_cases._backoff_outbox import (
     calcular_proxima_tentativa_em,
 )
@@ -50,6 +52,11 @@ from amactive.contexts.integracao_canais.domain.repositories import (
 # pequeno a cada tick") — o rate limiter da Nuvemshop (2 req/s) já é o
 # limitador real de throughput, não o tamanho do lote lido do banco.
 LIMITE_LOTE_PADRAO: Final = 20
+
+# Log estruturado a cada transição de status de `integracao_catalogo_outbox`
+# (design §8) — sempre incluindo `outbox_id`/`produto_id`, nunca
+# token/secret.
+_logger = structlog.get_logger(__name__)
 
 
 class PublicarCatalogoCanalUseCase:
@@ -97,6 +104,12 @@ class PublicarCatalogoCanalUseCase:
 
         await self._atualizar_mapeamentos(produto, resultado)
         await self._outbox.marcar_enviado(item.id, superseded_ids=[])
+        _logger.info(
+            "integracao_catalogo_outbox.enviado",
+            outbox_id=item.id,
+            produto_id=item.produto_id,
+            operacao="atualizar" if produto_externo_id_ja_mapeado is not None else "criar",
+        )
 
     async def _resolver_produto_externo_id(self, produto: ProdutoParaPublicacao) -> str | None:
         """Retorna o `produto_externo_id` já mapeado (uma atualização), ou
@@ -146,4 +159,12 @@ class PublicarCatalogoCanalUseCase:
         )
         await self._outbox.marcar_erro_com_retry(
             item.id, detalhe=detalhe, proxima_tentativa_em=proxima_tentativa_em
+        )
+        _logger.warning(
+            "integracao_catalogo_outbox.erro",
+            outbox_id=item.id,
+            produto_id=item.produto_id,
+            detalhe=detalhe,
+            tentativas=tentativas_apos_esta_falha,
+            proxima_tentativa_em=proxima_tentativa_em.isoformat(),
         )

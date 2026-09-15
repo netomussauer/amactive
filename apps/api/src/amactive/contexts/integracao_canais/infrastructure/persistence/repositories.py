@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, select, text, update
+from sqlalchemy import RowMapping, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,9 @@ from amactive.contexts.integracao_canais.domain.entities import (
     WebhookEvento,
 )
 from amactive.contexts.integracao_canais.domain.repositories import CredencialDecifrada
+from amactive.contexts.integracao_canais.infrastructure.metrics import (
+    webhook_evento_conflito_manual_total,
+)
 from amactive.contexts.integracao_canais.infrastructure.persistence.models import (
     IntegracaoCatalogoOutboxModel,
     IntegracaoEstoqueOutboxModel,
@@ -183,6 +186,12 @@ class SqlAlchemyWebhookEventoRepository:
         modelo.status = StatusWebhookEvento.CONFLITO_MANUAL.value
         modelo.erro_detalhe = detalhe
         await self._session.flush()
+        # Métrica `webhook_evento_conflito_manual_total` (design §5.4/§8) —
+        # único ponto de gravação de CONFLITO_MANUAL do sistema (todos os
+        # chamadores de `ProcessarWebhookPedidoUseCase` passam por aqui),
+        # então incrementar neste repositório cobre todo motivo de conflito
+        # sem precisar duplicar a chamada em cada ponto de uso.
+        webhook_evento_conflito_manual_total.inc()
 
 
 class SqlAlchemyMapeamentoVarianteRepository:
@@ -366,6 +375,21 @@ class SqlAlchemyIntegracaoEstoqueOutboxRepository:
         modelo.proxima_tentativa_em = proxima_tentativa_em
         await self._session.flush()
 
+    async def contar_pendentes(self) -> int:
+        """`SELECT count(*) ... WHERE status IN ('PENDENTE', 'ERRO')` —
+        alimenta o gauge `integracao_outbox_pendente{fila="estoque"}`
+        (design §8), sem nenhuma query nova além da já necessária."""
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(IntegracaoEstoqueOutboxModel)
+            .where(
+                IntegracaoEstoqueOutboxModel.status.in_(
+                    [StatusOutbox.PENDENTE.value, StatusOutbox.ERRO.value]
+                )
+            )
+        )
+        return int(total or 0)
+
 
 class SqlAlchemyIntegracaoCatalogoOutboxRepository:
     """Implementa `IntegracaoCatalogoOutboxRepository` (design §2.5/§4.2/§4.3)
@@ -454,6 +478,20 @@ class SqlAlchemyIntegracaoCatalogoOutboxRepository:
         modelo.erro_detalhe = detalhe
         modelo.proxima_tentativa_em = proxima_tentativa_em
         await self._session.flush()
+
+    async def contar_pendentes(self) -> int:
+        """Idem `SqlAlchemyIntegracaoEstoqueOutboxRepository.contar_pendentes`,
+        para o gauge `integracao_outbox_pendente{fila="catalogo"}`."""
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(IntegracaoCatalogoOutboxModel)
+            .where(
+                IntegracaoCatalogoOutboxModel.status.in_(
+                    [StatusOutbox.PENDENTE.value, StatusOutbox.ERRO.value]
+                )
+            )
+        )
+        return int(total or 0)
 
 
 def _catalogo_outbox_linha_para_entidade(linha: RowMapping) -> IntegracaoCatalogoOutbox:

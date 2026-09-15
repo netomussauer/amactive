@@ -241,6 +241,13 @@ class IntegracaoEstoqueOutboxRepository(Protocol):
         self, outbox_id: UUID, *, detalhe: str, proxima_tentativa_em: datetime
     ) -> None: ...
 
+    async def contar_pendentes(self) -> int:
+        """`SELECT count(*) ... WHERE status IN ('PENDENTE', 'ERRO')` — usada
+        por `run_worker.py` para atualizar o gauge
+        `integracao_outbox_pendente{fila="estoque"}` (design §8), sem
+        nenhuma query nova além da já necessária para o alerta operacional."""
+        ...
+
 
 class IntegracaoCatalogoOutboxRepository(Protocol):
     """Mesma forma de `IntegracaoEstoqueOutboxRepository`, chave
@@ -255,6 +262,11 @@ class IntegracaoCatalogoOutboxRepository(Protocol):
     async def marcar_erro_com_retry(
         self, outbox_id: UUID, *, detalhe: str, proxima_tentativa_em: datetime
     ) -> None: ...
+
+    async def contar_pendentes(self) -> int:
+        """Idem `IntegracaoEstoqueOutboxRepository.contar_pendentes`, para o
+        gauge `integracao_outbox_pendente{fila="catalogo"}`."""
+        ...
 
 
 class CredencialCanalRepository(Protocol):

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from prometheus_client import REGISTRY
 
 from amactive.contexts.integracao_canais.domain.exceptions import NuvemshopIndisponivel
 from amactive.contexts.integracao_canais.domain.repositories import (
@@ -154,6 +155,40 @@ async def test_falha_de_rede_levanta_nuvemshop_indisponivel() -> None:
 
     with pytest.raises(NuvemshopIndisponivel):
         await client.buscar_pedido("999")
+
+
+# ── métrica `nuvemshop_client_requisicoes_total{status_code}` (design §8) ──
+async def test_requisicao_bem_sucedida_incrementa_metrica_com_status_code_200() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"id": 1, "customer": {"id": 1}, "products": [], "total": "10.00"}
+        )
+
+    antes = REGISTRY.get_sample_value("nuvemshop_client_requisicoes_total", {"status_code": "200"})
+
+    client = _client_com_transporte(handler)
+    await client.buscar_pedido("999")
+
+    depois = REGISTRY.get_sample_value("nuvemshop_client_requisicoes_total", {"status_code": "200"})
+    assert depois == (antes or 0.0) + 1
+
+
+async def test_falha_de_rede_incrementa_metrica_com_status_code_erro_rede() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("conexão recusada", request=request)
+
+    antes = REGISTRY.get_sample_value(
+        "nuvemshop_client_requisicoes_total", {"status_code": "erro_rede"}
+    )
+
+    client = _client_com_transporte(handler)
+    with pytest.raises(NuvemshopIndisponivel):
+        await client.buscar_pedido("999")
+
+    depois = REGISTRY.get_sample_value(
+        "nuvemshop_client_requisicoes_total", {"status_code": "erro_rede"}
+    )
+    assert depois == (antes or 0.0) + 1
 
 
 # ── criar_produto / atualizar_produto ──
