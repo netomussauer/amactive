@@ -96,6 +96,16 @@ spec:
                 secretKeyRef:
                   name: amactive-secrets
                   key: jwt-secret
+            # Usado pelo contexto integracao_canais (Fase 1, Nuvemshop) para
+            # cifrar/decifrar credencial_canal.access_token/client_secret em
+            # repouso via pgcrypto — mesmo motivo do JWT_SECRET acima,
+            # settings.py rejeita o valor default de desenvolvimento fora de
+            # ENVIRONMENT=development.
+            - name: CREDENCIAL_CANAL_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: credencial-canal-encryption-key
             - name: JWT_ALGORITHM
               value: "HS256"
             - name: JWT_EXPIRES_MINUTES
