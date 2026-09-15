@@ -101,9 +101,11 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 text-xs text-text-muted">
-            Ambiente de desenvolvimento: <strong>admin@amactive.dev</strong> / <strong>amactive123</strong>
-          </p>
+          {import.meta.env.DEV && (
+            <p className="mt-6 text-xs text-text-muted">
+              Ambiente de desenvolvimento: <strong>admin@amactive.dev</strong> / <strong>amactive123</strong>
+            </p>
+          )}
         </div>
       </div>
     </div>
