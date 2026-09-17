@@ -11,8 +11,8 @@ pendentes" abaixo para a ordem exata do que falta.
 | --- | --- | --- |
 | Imagem API | `harbor.lab.local/amactive/api:latest` | Build via Tekton + Harbor |
 | Imagem Web | `harbor.lab.local/amactive/web:latest` | Build via Tekton + Harbor |
-| Service API (MetalLB) | `192.168.1.212` (candidato) | **Não confirmado no NetBox** — ver passo 5 |
-| Service Web (MetalLB) | `192.168.1.213` (candidato) | **Não confirmado no NetBox** — ver passo 5 |
+| Service API (MetalLB) | `192.168.1.212` | Confirmado e registrado no NetBox (2026-09-14) |
+| Service Web (MetalLB) | `192.168.1.213` | Confirmado e registrado no NetBox (2026-09-14) |
 | DNS | `api.amactive.local` / `app.amactive.local` | Adicionar no Pi-hole (passo 6) |
 | Database | `postgresql.shared-infra.svc.cluster.local:5432/amactive` | **Ainda não provisionado** — ver passo 1 |
 | Uploads (imagens de produto) | PVC `amactive-api-uploads` (local-path, 5Gi) | Substitui o volume Docker `amactive_uploads_data`; MinIO/S3 fica para uma etapa futura (decisão já confirmada, não migrar agora) |
@@ -150,15 +150,19 @@ kubectl create secret generic gitea-webhook-secret-amactive \
   -n cicd
 ```
 
-### 5. Confirmar/reservar os IPs no NetBox
+### 5. Confirmar/reservar os IPs no NetBox — feito (2026-09-14)
 
-`192.168.1.212` (API) e `192.168.1.213` (Web) foram escolhidos por serem a
-próxima faixa livre sequencial observada no lab (amfit ocupa 205-207,
-realtpmsys ocupa 208 e 211, grafana 210, 209 livre) — **não são uma reserva
-confirmada**. Registrar os dois no NetBox antes de aplicar
-`infra/k8s/api/service.yaml` / `infra/k8s/web/service.yaml` de verdade, e
-ajustar o `loadBalancerIP` nos manifestos se o NetBox apontar para outro IP
-livre.
+`192.168.1.212` (API) e `192.168.1.213` (Web) já estavam em uso real pelo
+MetalLB (services aplicados e respondendo) sem conflito com nenhum IP
+existente no NetBox (checado via API — nenhuma das duas faixas aparecia
+registrada; amfit/realtpmsys nunca haviam sido registrados no NetBox
+apesar de também estarem ativos, então a ausência de registro não indica
+disponibilidade por si só, mas a checagem confirmou que ninguém mais
+reivindica esses dois endereços). Registrados como
+`ipam.ip-addresses` (`192.168.1.212/27` — "MetalLB — AMACTIVE API",
+`192.168.1.213/27` — "MetalLB — AMACTIVE Web"), mesmo padrão de descrição
+usado pelos demais IPs MetalLB do lab (Gitea `.200`, Harbor `.201`, ArgoCD
+`.202`, Tekton EventListener `.203`, Grafana `.210`).
 
 ### 6. DNS no Pi-hole
 
