@@ -19,7 +19,11 @@ class Base(DeclarativeBase):
     """Base declarativa compartilhada pelos modelos ORM de todos os contextos."""
 
 
-engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+# hide_parameters: um erro de banco não pode gravar os bind parameters no
+# log/exceção — a query de credencial_canal passa a chave de cifragem
+# (`:chave`) como parâmetro, e o endpoint público de webhook a executa a
+# partir de requisições anônimas.
+engine = create_async_engine(settings.database_url, pool_pre_ping=True, hide_parameters=True)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 

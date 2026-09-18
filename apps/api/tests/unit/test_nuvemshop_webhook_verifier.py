@@ -56,6 +56,47 @@ def test_verificar_rejeita_corpo_alterado_apos_a_assinatura() -> None:
     assert resultado is False
 
 
+def test_verificar_assinatura_com_caractere_nao_ascii_retorna_false_sem_levantar() -> None:
+    # Endpoint anônimo: o header é entrada hostil. `hmac.compare_digest`
+    # entre `str` levantaria TypeError (→ 500) com não-ASCII.
+    verifier = HmacSha256WebhookVerifier()
+
+    resultado = verifier.verificar(
+        corpo_bruto=b'{"id": 456}', assinatura="assinatura-é-ã-ü", client_secret="segredo"
+    )
+
+    assert resultado is False
+
+
+def test_verificar_rejeita_client_secret_vazio_mesmo_com_hmac_correspondente() -> None:
+    # HMAC com chave vazia é calculável por qualquer um — nunca autentica.
+    verifier = HmacSha256WebhookVerifier()
+    corpo = b'{"id": 456}'
+    assinatura = _assinar(corpo, "")
+
+    assert verifier.verificar(corpo_bruto=corpo, assinatura=assinatura, client_secret="") is False
+
+
+def test_verificar_tolera_hex_em_maiusculas_e_espacos_nas_pontas() -> None:
+    verifier = HmacSha256WebhookVerifier()
+    corpo = b'{"id": 456}'
+    secret = "client-secret-do-app-privado"
+    assinatura = f"  {_assinar(corpo, secret).upper()} "
+
+    assert (
+        verifier.verificar(corpo_bruto=corpo, assinatura=assinatura, client_secret=secret) is True
+    )
+
+
+def test_verificar_rejeita_assinatura_vazia() -> None:
+    verifier = HmacSha256WebhookVerifier()
+
+    assert (
+        verifier.verificar(corpo_bruto=b'{"id": 456}', assinatura="", client_secret="segredo")
+        is False
+    )
+
+
 def test_verificar_rejeita_assinatura_malformada() -> None:
     verifier = HmacSha256WebhookVerifier()
 

@@ -1,0 +1,142 @@
+# Worker de integração de canais (Nuvemshop) — processo de longa duração
+# `python -m amactive.scripts.run_worker` (ver docs/design-integracao-nuvemshop.md
+# §4.5). Consome webhook_evento pendente (cria pedidos), os outbox de
+# estoque/catálogo (publica na Nuvemshop) e roda a reconciliação horária.
+#
+# `replicas: 0` DE PROPÓSITO até a credencial da Nuvemshop existir: no
+# startup o worker lê a credencial ativa (credencial_canal) e, se ausente,
+# termina com exit 1 (CredencialCanalAusente, por design) — com replicas: 1
+# viraria CrashLoopBackOff barulhento. Depois de rodar
+# `python -m amactive.scripts.configurar_credencial_nuvemshop` (ver
+# infra/README.md), subir para `replicas: 1` neste arquivo e dar push
+# (GitOps: `kubectl scale` direto seria revertido pelo selfHeal do ArgoCD).
+#
+# Mantenha replicas <= 1 por ora: o token bucket do client HTTP (2 req/s,
+# limite da Nuvemshop por loja) é local ao processo — mais de uma réplica
+# estouraria o limite compartilhado.
+#
+# Mesma imagem da API. `command` sobrescreve o ENTRYPOINT da imagem
+# (docker-entrypoint.sh) de propósito: ele roda apply_migrations antes de
+# executar o CMD, e quem aplica migrations é o pod da API — o worker só
+# consome o schema já migrado (e evita duas instâncias migrando em
+# paralelo).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amactive-worker
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-worker"
+    app.kubernetes.io/version: "latest"
+    app.kubernetes.io/component: "worker"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  replicas: 0
+  revisionHistoryLimit: 3
+  # Recreate: nunca dois workers simultâneos durante um rollout (rate limit
+  # compartilhado da Nuvemshop, ver acima).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "amactive-worker"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "amactive-worker"
+        app.kubernetes.io/version: "latest"
+        app.kubernetes.io/component: "worker"
+        environment: "dev"
+        lab_id: "lab-k8s-01"
+        lab_owner: "jose.mussauer"
+    spec:
+      nodeSelector:
+        workload: cicd
+      imagePullSecrets:
+        - name: harbor-pull-secret
+      # Dá tempo de um tick em andamento terminar após o SIGTERM (o worker
+      # nunca interrompe um tick; ver run_worker.py) — um tick pode incluir
+      # chamadas à Nuvemshop sob rate limit.
+      terminationGracePeriodSeconds: 60
+      # O worker nunca fala com a API do Kubernetes — não montar o token da
+      # ServiceAccount reduz o estrago de uma eventual execução de código.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: harbor.lab.local/amactive/api:latest
+          imagePullPolicy: Always
+          command: ["python", "-m", "amactive.scripts.run_worker"]
+          env:
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: pg-password
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://amactive:$(PG_PASSWORD)@postgresql.shared-infra.svc.cluster.local:5432/amactive"
+            # Settings() valida no import: sem estes dois segredos reais (e
+            # ENVIRONMENT != development) o processo nem inicia.
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: jwt-secret
+            - name: CREDENCIAL_CANAL_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: amactive-secrets
+                  key: credencial-canal-encryption-key
+            - name: ENVIRONMENT
+              value: "production"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # Sem servidor HTTP: o loop atualiza /tmp/worker-heartbeat a cada
+          # volta (run_worker._registrar_heartbeat) e os probes conferem que
+          # o mtime tem menos de 15 min (acima da reconciliação mais longa
+          # possível sob o rate limit de 2 req/s). Loop travado -> restart.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; sys.exit(0 if time.time()-os.stat('/tmp/worker-heartbeat').st_mtime < 900 else 1)"
+            initialDelaySeconds: 90
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys,time; sys.exit(0 if time.time()-os.stat('/tmp/worker-heartbeat').st_mtime < 900 else 1)"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "300m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: tmp
+          emptyDir: {}

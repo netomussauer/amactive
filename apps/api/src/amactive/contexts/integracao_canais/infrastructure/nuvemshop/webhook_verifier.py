@@ -16,8 +16,17 @@ class HmacSha256WebhookVerifier:
     """Compara a assinatura recebida no header `x-linkedstore-hmac-sha256`
     (avaliação §1.4) contra o HMAC-SHA256 do corpo bruto do webhook,
     calculado com o `client_secret` do app privado — sempre via
-    `hmac.compare_digest` (resistente a timing attack), nunca `==`."""
+    `hmac.compare_digest` (resistente a timing attack), nunca `==`.
+
+    Endpoint anônimo: o header é entrada hostil. A comparação é feita em
+    `bytes` porque `compare_digest` entre `str` levanta `TypeError` (→ 500)
+    se qualquer lado tiver caractere não-ASCII, e o Starlette decodifica
+    headers como latin-1. Um `client_secret` vazio é rejeitado: o HMAC com
+    chave vazia é calculável por qualquer um."""
 
     def verificar(self, *, corpo_bruto: bytes, assinatura: str, client_secret: str) -> bool:
+        if not client_secret:
+            return False
         esperado = hmac.new(client_secret.encode("utf-8"), corpo_bruto, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(esperado, assinatura)
+        recebido = assinatura.strip().lower()
+        return hmac.compare_digest(esperado.encode("ascii"), recebido.encode("utf-8", "replace"))

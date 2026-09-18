@@ -206,6 +206,22 @@ class SqlAlchemyWebhookEventoRepository:
         )
         return bool(resultado.scalar())
 
+    async def contar_pendentes(self) -> int:
+        """Alimenta o gauge `integracao_outbox_pendente{fila="webhook"}`
+        (design §8) — mesmo predicado de `buscar_lote_pendente`
+        (`PENDENTE`/`ERRO`), servido pelo índice parcial
+        `idx_webhook_evento_fila` (design §6.2)."""
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(WebhookEventoModel)
+            .where(
+                WebhookEventoModel.status.in_(
+                    [StatusWebhookEvento.PENDENTE.value, StatusWebhookEvento.ERRO.value]
+                )
+            )
+        )
+        return int(total or 0)
+
 
 class SqlAlchemyMapeamentoVarianteRepository:
     """Implementa `MapeamentoVarianteRepository` (design §2.5/§2.4/§6.3)."""

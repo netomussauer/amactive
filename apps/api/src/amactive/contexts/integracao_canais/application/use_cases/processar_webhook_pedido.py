@@ -1,5 +1,7 @@
-"""Command — usado pelo worker (`run_worker.py`, ainda não implementado —
-ver docs/design-integracao-nuvemshop.md §9 passo 7).
+"""Command — usado pelo worker (`run_worker.py`), via
+`ConsumirWebhooksPendentesUseCase` (fila `webhook_evento`) e
+`ReconciliarPedidosUseCase` — ver docs/design-integracao-nuvemshop.md §9
+passo 7.
 
 Implementa o fluxo completo de design §5.3: busca o pedido completo via
 `NuvemshopClientPort` (o payload do webhook não traz os itens), resolve o
@@ -14,7 +16,8 @@ desfechos possíveis do diagrama de sequência (§5.3):
 - `SaldoDeEstoqueInsuficiente` -> `marcar_conflito_manual` (log ERROR — maior
   severidade de negócio: pedido já pago na Nuvemshop, não pôde ser criado)
 - erro transitório (rede/5xx da Nuvemshop, deadlock) -> `marcar_erro`
-  (`tentativas += 1`, reprocessado no próximo tick pelo worker)
+  (`tentativas += 1`, reprocessado pelo worker após o backoff em memória e
+  até o teto de tentativas — ver `ConsumirWebhooksPendentesUseCase`)
 """
 
 from __future__ import annotations
@@ -42,10 +45,10 @@ from amactive.contexts.vendas.domain.exceptions import PagamentosNaoConferem
 from amactive.shared_kernel.exceptions import ConflitoTransacional
 
 # Único tipo de evento assinado na Fase 1 (avaliação §6) — `order/cancelled`
-# e `product/updated` ficam para a Fase 2. `run_worker.py` (passo 7) é quem
-# decide quais eventos passam por este use case; ele mesmo não filtra por
-# `tipo_evento` porque, na Fase 1, a Nuvemshop só é configurada para
-# entregar `order/paid` (fora do escopo Python, ver design §9 item 9).
+# e `product/updated` ficam para a Fase 2. Quem decide quais eventos passam
+# por este use case é `ConsumirWebhooksPendentesUseCase` (só `order/paid` e
+# `reconciliacao`; qualquer outro tipo nunca cria pedido); este use case
+# mesmo não filtra por `tipo_evento`.
 TIPO_EVENTO_PEDIDO_PAGO = "order/paid"
 
 # Log estruturado a cada transição de status de `webhook_evento` (design

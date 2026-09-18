@@ -54,9 +54,11 @@ def test_integracao_outbox_pendente_atualiza_por_fila() -> None:
     # por fila (design §8) — é um gauge (`.set(...)`), não um contador.
     metrics.integracao_outbox_pendente.labels(fila="estoque").set(3)
     metrics.integracao_outbox_pendente.labels(fila="catalogo").set(7)
+    metrics.integracao_outbox_pendente.labels(fila="webhook").set(5)
 
     assert _valor("integracao_outbox_pendente", {"fila": "estoque"}) == 3
     assert _valor("integracao_outbox_pendente", {"fila": "catalogo"}) == 7
+    assert _valor("integracao_outbox_pendente", {"fila": "webhook"}) == 5
 
     metrics.integracao_outbox_pendente.labels(fila="estoque").set(0)
     assert _valor("integracao_outbox_pendente", {"fila": "estoque"}) == 0

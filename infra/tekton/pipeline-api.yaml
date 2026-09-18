@@ -131,18 +131,25 @@ spec:
       runAfter: ["kaniko-build-push"]
       taskSpec:
         description: |
-          Reinicia o Deployment amactive-api no ns amactive e aguarda até
-          3min o rollout completar.
+          Reinicia os Deployments amactive-api e amactive-worker (mesma
+          imagem — o worker é `python -m amactive.scripts.run_worker`, ver
+          infra/k8s/worker/deployment.yaml) no ns amactive e aguarda até
+          3min cada rollout completar. Sem reiniciar o worker ele ficaria
+          preso na imagem antiga (tag :latest não muda no manifesto).
         steps:
           - name: restart
             image: docker.io/bitnami/kubectl:latest
             script: |
               #!/bin/sh
               set -eu
-              echo "→ kubectl rollout restart deployment/amactive-api -n amactive"
-              kubectl rollout restart deployment/amactive-api -n amactive
-              echo "→ kubectl rollout status (timeout 3m)"
-              kubectl rollout status deployment/amactive-api -n amactive --timeout=3m
+              for deploy in amactive-api amactive-worker; do
+                echo "→ kubectl rollout restart deployment/${deploy} -n amactive"
+                kubectl rollout restart "deployment/${deploy}" -n amactive
+              done
+              for deploy in amactive-api amactive-worker; do
+                echo "→ kubectl rollout status ${deploy} (timeout 3m)"
+                kubectl rollout status "deployment/${deploy}" -n amactive --timeout=3m
+              done
   workspaces:
     - name: source
       description: Workspace onde o código é clonado e compartilhado entre tasks.

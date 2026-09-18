@@ -236,6 +236,13 @@ class WebhookEventoRepository(Protocol):
         redundante."""
         ...
 
+    async def contar_pendentes(self) -> int:
+        """`SELECT count(*) ... WHERE status IN ('PENDENTE', 'ERRO')` — usada
+        por `run_worker.py` para atualizar o gauge
+        `integracao_outbox_pendente{fila="webhook"}` (design §8), mesmo
+        padrão de `contar_pendentes` dos dois outbox."""
+        ...
+
 
 class MapeamentoVarianteRepository(Protocol):
     async def buscar_por_variante_externo(

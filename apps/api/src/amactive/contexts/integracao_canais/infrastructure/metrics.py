@@ -41,8 +41,9 @@ webhook_evento_conflito_manual_total = Counter(
 
 # Consulta periódica do worker (`scripts/run_worker.py`, design §8) — o
 # tamanho da fila é o principal indicador de saúde da sincronização.
-# `fila` é sempre "estoque" ou "catalogo" (design §8, mesmos rótulos citados
-# na tabela de observabilidade).
+# `fila` é sempre "estoque", "catalogo" ou "webhook" (design §8, mesmos
+# rótulos citados na tabela de observabilidade; "webhook" = `webhook_evento`
+# em `PENDENTE`/`ERRO`, ainda não consumido pelo worker).
 integracao_outbox_pendente = Gauge(
     "integracao_outbox_pendente",
     "Quantidade de linhas PENDENTE/ERRO em cada fila de outbox de integração.",
