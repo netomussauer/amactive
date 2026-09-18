@@ -297,7 +297,59 @@ conferir `kubectl logs -n metallb-system speaker-*` e o passo 5 (NetBox).
 documentado pelo realtpmsys neste cluster — usar o `dnsConfig` de
 `tekton/pipelinerun-web-manual.yaml.example` ao disparar manualmente.
 
+## Integração Nuvemshop — exposição pública e ativação
+
+**Exposição pública** (ADR-013 do `infra-lab`): Internet → Cloudflare →
+`cloudflared` (ns `edge`, túnel outbound) → ingress-nginx interno → Ingress
+[`api/ingress-public.yaml`](k8s/api/ingress-public.yaml). Só a rota exata
+`POST https://amactive.amtech.app.br/integracoes/nuvemshop/webhooks` é
+alcançável pela internet (`pathType: Exact`; `/docs`, `/metrics`,
+`/auth/login` etc. respondem 404 nesse hostname e seguem só na LAN). A
+barreira de aplicação é o HMAC-SHA256 do corpo (`x-linkedstore-hmac-sha256`).
+
+**Worker**: [`worker/deployment.yaml`](k8s/worker/deployment.yaml) — mesma
+imagem da API, `python -m amactive.scripts.run_worker`. Está com
+`replicas: 0` até a credencial existir (sem ela o processo sai com erro por
+design). O pipeline `amactive-build-api` reinicia API **e** worker a cada
+build.
+
+**Ativar** (nesta ordem; nenhum segredo entra no Git nem no histórico do
+shell — `read -s` não ecoa):
+
+```bash
+# 1. Usuário de sistema que assina pedidos importados (idempotente)
+kubectl exec -n amactive deploy/amactive-api -- \
+  python -m amactive.scripts.bootstrap_usuario_integracao
+
+# 2. Credencial do app privado da Nuvemshop (cifrada no banco via pgcrypto).
+#    A chave de cifragem já está no ambiente do pod (secret amactive-secrets).
+read -rp  'STORE_ID: ' STORE_ID
+read -rsp 'Access token: ' NS_TOKEN; echo
+read -rsp 'Client secret: ' NS_SECRET; echo
+kubectl exec -n amactive deploy/amactive-api -- env \
+  STORE_ID="$STORE_ID" NUVEMSHOP_ACCESS_TOKEN="$NS_TOKEN" \
+  NUVEMSHOP_CLIENT_SECRET="$NS_SECRET" \
+  python -m amactive.scripts.configurar_credencial_nuvemshop
+unset NS_TOKEN NS_SECRET
+
+# 3. Ligar o worker: trocar `replicas: 0` por `replicas: 1` em
+#    infra/k8s/worker/deployment.yaml e dar push (GitOps — `kubectl scale`
+#    direto é revertido pelo selfHeal do ArgoCD).
+
+# 4. Registrar o webhook na Nuvemshop (evento order/paid) apontando para a
+#    URL pública acima — POST /webhooks da API da Nuvemshop, com o mesmo
+#    access token (fora do escopo Python, design §9 item 9).
+```
+
+O endpoint cacheia a credencial por 30s: após rotacioná-la, a nova vale em
+até esse tempo. Se o webhook responder 401 depois de configurado, confira
+que `STORE_ID` é exatamente o `store_id` que a Nuvemshop envia no payload.
+
 ## Próximos passos (fora do escopo desta tarefa)
+
+- Observabilidade da integração: as métricas do worker (fila de outbox,
+  conflitos manuais) vivem no processo do worker, que ainda não expõe
+  `/metrics`; e não há `ServiceMonitor` para o amactive (nem para a API).
 
 - Path filtering no interceptor `cel` de `triggers.yaml`: hoje qualquer
   push em `main` dispara os dois pipelines (api + web), mesmo que só um
