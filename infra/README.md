@@ -297,15 +297,26 @@ conferir `kubectl logs -n metallb-system speaker-*` e o passo 5 (NetBox).
 documentado pelo realtpmsys neste cluster — usar o `dnsConfig` de
 `tekton/pipelinerun-web-manual.yaml.example` ao disparar manualmente.
 
-## Integração Nuvemshop — exposição pública e ativação
+## Integração Nuvemshop — EM ESPERA (exposição pública e ativação)
 
-**Exposição pública** (ADR-013 do `infra-lab`): Internet → Cloudflare →
-`cloudflared` (ns `edge`, túnel outbound) → ingress-nginx interno → Ingress
-[`api/ingress-public.yaml`](k8s/api/ingress-public.yaml). Só a rota exata
-`POST https://amactive.amtech.app.br/integracoes/nuvemshop/webhooks` é
-alcançável pela internet (`pathType: Exact`; `/docs`, `/metrics`,
-`/auth/login` etc. respondem 404 nesse hostname e seguem só na LAN). A
-barreira de aplicação é o HMAC-SHA256 do corpo (`x-linkedstore-hmac-sha256`).
+**Status: em espera.** Criar o app privado na Nuvemshop exige o plano Escala
+(R$ 382–449/mês), acima do orçamento atual (loja no plano Essencial; ver
+[`docs/avaliacao-alternativas-canal-venda.md`](../docs/avaliacao-alternativas-canal-venda.md)).
+O código da Fase 1 continua na imagem, mas o worker está com `replicas: 0` e
+**o Ingress público foi removido** (sem o webhook da Nuvemshop ele não tem
+função e só aumentaria a superfície de ataque). Enquanto isso, os pedidos da
+Nuvemshop e do WhatsApp são lançados manualmente no AMACTIVE, por canal.
+
+**Para reativar a exposição pública** (ADR-013 do `infra-lab`): Internet →
+Cloudflare → `cloudflared` (ns `edge`, túnel outbound) → ingress-nginx
+interno → Ingress `amactive-api-public`. O manifest foi removido no commit
+que fecha a exposição; para recuperá-lo:
+`git show 3f07544:infra/k8s/api/ingress-public.yaml > infra/k8s/api/ingress-public.yaml`.
+Ele expõe só a rota exata
+`POST https://amactive.amtech.app.br/integracoes/nuvemshop/webhooks`
+(`pathType: Exact`; `/docs`, `/metrics`, `/auth/login` etc. respondem 404 nesse
+hostname e seguem só na LAN). A barreira de aplicação é o HMAC-SHA256 do
+corpo (`x-linkedstore-hmac-sha256`).
 
 **Worker**: [`worker/deployment.yaml`](k8s/worker/deployment.yaml) — mesma
 imagem da API, `python -m amactive.scripts.run_worker`. Está com
