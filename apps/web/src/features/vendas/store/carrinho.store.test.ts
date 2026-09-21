@@ -147,4 +147,18 @@ describe('carrinho.store', () => {
     expect(useCarrinhoStore.getState().clienteId).toBeNull()
     expect(useCarrinhoStore.getState().observacao).toBe('')
   })
+
+  it('começa no canal PDV, troca de canal sem tocar nos itens e volta a PDV no clear()', () => {
+    expect(useCarrinhoStore.getState().origemCanal).toBe('PDV')
+
+    useCarrinhoStore.getState().addItem(makeItem())
+    useCarrinhoStore.getState().setOrigemCanal('NUVEMSHOP')
+
+    expect(useCarrinhoStore.getState().origemCanal).toBe('NUVEMSHOP')
+    expect(useCarrinhoStore.getState().itens).toHaveLength(1)
+
+    useCarrinhoStore.getState().clear()
+
+    expect(useCarrinhoStore.getState().origemCanal).toBe('PDV')
+  })
 })

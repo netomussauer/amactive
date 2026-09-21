@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from amactive.contexts.vendas.domain.entities import Pedido, StatusPedido
+from amactive.contexts.vendas.domain.entities import OrigemCanalPedido, Pedido, StatusPedido
 from amactive.contexts.vendas.domain.exceptions import PedidoNaoEncontrado
 from amactive.contexts.vendas.domain.repositories import PedidoRepository
 
@@ -23,6 +23,7 @@ class ListarPedidosQuery:
         cliente_id: UUID | None,
         data_inicio: date | None,
         data_fim: date | None,
+        origem_canal: OrigemCanalPedido | None = None,
     ) -> tuple[list[Pedido], int]:
         return await self._repository.listar(
             page=page,
@@ -31,6 +32,7 @@ class ListarPedidosQuery:
             cliente_id=cliente_id,
             data_inicio=data_inicio,
             data_fim=data_fim,
+            origem_canal=origem_canal,
         )
 
 

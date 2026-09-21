@@ -33,6 +33,9 @@ class OrigemCanalPedido(str, Enum):
 
     PDV = "PDV"
     NUVEMSHOP = "NUVEMSHOP"
+    # migrations/000006_origem_canal_whatsapp — pedidos registrados
+    # manualmente a partir de vendas fechadas por WhatsApp.
+    WHATSAPP = "WHATSAPP"
 
 
 @dataclass(frozen=True)

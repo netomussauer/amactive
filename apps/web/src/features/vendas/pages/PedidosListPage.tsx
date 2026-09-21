@@ -6,18 +6,21 @@ import { Button, Select, Input, Pagination } from '@/shared/components/ui'
 import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { routes } from '@/shared/lib/routes'
 import { PedidoTable } from '../components/PedidoTable'
+import { ORIGEM_CANAL_OPTIONS } from '../lib/canal'
 import { usePedidos } from '../hooks/usePedidos'
 
 export function PedidosListPage() {
   const navigate = useNavigate()
   const { podeVenderNoPdv } = usePermissoes()
   const [status, setStatus] = useState('')
+  const [origemCanal, setOrigemCanal] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
   const [page, setPage] = useState(1)
 
   const { data, isLoading } = usePedidos({
     status: status || undefined,
+    origem_canal: origemCanal || undefined,
     data_inicio: dataInicio || undefined,
     data_fim: dataFim || undefined,
     page,
@@ -54,6 +57,26 @@ export function PedidosListPage() {
             <option value="PENDENTE">Pendente</option>
             <option value="CONFIRMADO">Confirmado</option>
             <option value="CANCELADO">Cancelado</option>
+          </Select>
+        </div>
+        <div className="w-40">
+          <label htmlFor="filtro-canal" className="mb-1.5 block text-sm font-medium text-text">
+            Canal
+          </label>
+          <Select
+            id="filtro-canal"
+            value={origemCanal}
+            onChange={(event) => {
+              setOrigemCanal(event.target.value)
+              setPage(1)
+            }}
+          >
+            <option value="">Todos</option>
+            {ORIGEM_CANAL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </Select>
         </div>
         <div>

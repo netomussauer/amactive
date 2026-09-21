@@ -19,6 +19,7 @@ from amactive.contexts.relatorios.infrastructure.api.schemas import (
 from amactive.contexts.relatorios.infrastructure.persistence.repository import (
     RelatoriosRepository,
 )
+from amactive.contexts.vendas.domain.entities import OrigemCanalPedido
 from amactive.core.security import requer_papel
 from amactive.shared_kernel.database import get_db_session
 from amactive.shared_kernel.money import to_money_str
@@ -71,11 +72,13 @@ async def obter_resumo_dashboard(
 async def relatorio_vendas_por_periodo(
     data_inicio: date,
     data_fim: date,
+    origem_canal: OrigemCanalPedido | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> VendaPorPeriodoListResponse:
     vendas = await RelatoriosRepository(session).vendas_por_periodo(
         inicio=datetime.combine(data_inicio, time.min, tzinfo=UTC),
         fim=datetime.combine(data_fim, time.max, tzinfo=UTC),
+        origem_canal=origem_canal.value if origem_canal is not None else None,
     )
     return VendaPorPeriodoListResponse(
         data=[

@@ -46,7 +46,15 @@ forma_pagamento_enum = PGEnum(
     create_type=False,
 )
 
-origem_canal_pedido_enum = PGEnum("PDV", "NUVEMSHOP", name="origem_canal_pedido", create_type=False)
+origem_canal_pedido_enum = PGEnum(
+    "PDV",
+    "NUVEMSHOP",
+    # Valor aditivo (migrations/000006_origem_canal_whatsapp) — pedidos
+    # registrados manualmente a partir de vendas por WhatsApp.
+    "WHATSAPP",
+    name="origem_canal_pedido",
+    create_type=False,
+)
 
 origem_cadastro_cliente_enum = PGEnum(
     "MANUAL", "NUVEMSHOP", name="origem_cadastro_cliente", create_type=False

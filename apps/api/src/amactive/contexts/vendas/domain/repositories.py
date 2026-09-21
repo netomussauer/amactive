@@ -68,6 +68,10 @@ class PedidoRepository(Protocol):
 
     async def buscar_por_id(self, pedido_id: UUID) -> Pedido | None: ...
 
+    async def existe_pedido_externo(
+        self, *, origem_canal: OrigemCanalPedido, pedido_externo_id: str
+    ) -> bool: ...
+
     async def listar(
         self,
         *,
@@ -77,6 +81,7 @@ class PedidoRepository(Protocol):
         cliente_id: UUID | None,
         data_inicio: date | None,
         data_fim: date | None,
+        origem_canal: OrigemCanalPedido | None = None,
     ) -> tuple[list[Pedido], int]: ...
 
     async def atualizar_status(

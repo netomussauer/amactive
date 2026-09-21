@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { relatorioService } from '../services/relatorio.service'
-import type { PeriodoFilter } from '../types/relatorio.types'
+import type { VendasPorPeriodoFilter } from '../types/relatorio.types'
 
-export function useRelatorioVendas(filter: Required<PeriodoFilter>) {
+export function useRelatorioVendas(filter: VendasPorPeriodoFilter) {
   return useQuery({
     queryKey: ['relatorios', 'vendas-por-periodo', filter],
     queryFn: () => relatorioService.vendasPorPeriodo(filter),

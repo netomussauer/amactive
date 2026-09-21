@@ -7,12 +7,14 @@ export type {
   PagamentoRequest,
   StatusPedido,
   FormaPagamento,
+  OrigemCanal,
 } from '../schemas/pedido.schema'
 
 export type PedidoFilter = {
   page?: number
   per_page?: number
   status?: string
+  origem_canal?: string
   cliente_id?: string
   data_inicio?: string
   data_fim?: string

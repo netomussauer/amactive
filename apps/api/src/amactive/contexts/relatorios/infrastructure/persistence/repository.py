@@ -29,18 +29,42 @@ class RelatoriosRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def vendas_por_periodo(self, *, inicio: datetime, fim: datetime) -> list[VendaPorDia]:
-        resultado = await self._session.execute(
-            text(
-                """
-                SELECT dia::date AS dia, total_pedidos, COALESCE(faturamento, 0) AS faturamento
-                FROM vw_vendas_por_periodo
-                WHERE dia BETWEEN :inicio AND :fim
-                ORDER BY dia
-                """
-            ),
-            {"inicio": inicio, "fim": fim},
-        )
+    async def vendas_por_periodo(
+        self, *, inicio: datetime, fim: datetime, origem_canal: str | None = None
+    ) -> list[VendaPorDia]:
+        if origem_canal is None:
+            resultado = await self._session.execute(
+                text(
+                    """
+                    SELECT dia::date AS dia, total_pedidos, COALESCE(faturamento, 0) AS faturamento
+                    FROM vw_vendas_por_periodo
+                    WHERE dia BETWEEN :inicio AND :fim
+                    ORDER BY dia
+                    """
+                ),
+                {"inicio": inicio, "fim": fim},
+            )
+        else:
+            # A view não expõe `origem_canal`, então o filtro por canal usa a
+            # mesma agregação da `vw_vendas_por_periodo` (migrations/000001)
+            # diretamente sobre `pedido`, com o predicado a mais.
+            resultado = await self._session.execute(
+                text(
+                    """
+                    SELECT
+                        date_trunc('day', p.confirmado_em)::date AS dia,
+                        COUNT(DISTINCT p.id) AS total_pedidos,
+                        COALESCE(SUM(p.valor_total), 0) AS faturamento
+                    FROM pedido p
+                    WHERE p.status = 'CONFIRMADO'
+                      AND p.origem_canal = CAST(:origem_canal AS origem_canal_pedido)
+                      AND date_trunc('day', p.confirmado_em) BETWEEN :inicio AND :fim
+                    GROUP BY date_trunc('day', p.confirmado_em)
+                    ORDER BY dia
+                    """
+                ),
+                {"inicio": inicio, "fim": fim, "origem_canal": origem_canal},
+            )
         return [
             VendaPorDia(dia=row.dia, total_pedidos=row.total_pedidos, faturamento=row.faturamento)
             for row in resultado.all()

@@ -3,6 +3,8 @@ import { Card, CardHeader, CardTitle } from '@/shared/components/ui/Card'
 import { Table, TableHead, TableBody, TableRow, TableHeadCell, TableCell } from '@/shared/components/ui/Table'
 import { formatCurrencyBRL, formatDateTime } from '@/shared/lib/format'
 import type { PedidoDetalhe, StatusPedido } from '../types/pedido.types'
+import { labelPedidoExterno } from '../lib/canal'
+import { CanalBadge } from './CanalBadge'
 
 const statusTone: Record<StatusPedido, 'pendente' | 'confirmado' | 'cancelado'> = {
   PENDENTE: 'pendente',
@@ -21,6 +23,7 @@ const formaPagamentoLabel: Record<string, string> = {
   PIX: 'PIX',
   CARTAO_DEBITO: 'Cartão de débito',
   CARTAO_CREDITO: 'Cartão de crédito',
+  NUVEMSHOP: 'Nuvemshop (pago no checkout)',
 }
 
 type Props = {
@@ -36,9 +39,18 @@ export function PedidoDetalheCard({ pedido }: Props) {
             <CardTitle>Pedido {pedido.numero}</CardTitle>
             <p className="text-sm text-text-muted">{formatDateTime(pedido.criado_em)}</p>
           </div>
-          <Badge tone={statusTone[pedido.status]}>{statusLabel[pedido.status]}</Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <CanalBadge canal={pedido.origem_canal} />
+            <Badge tone={statusTone[pedido.status]}>{statusLabel[pedido.status]}</Badge>
+          </div>
         </CardHeader>
         <div className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+          {pedido.pedido_externo_id && (
+            <div>
+              <p className="text-text-muted">{labelPedidoExterno(pedido.origem_canal)}</p>
+              <p className="font-medium text-text">{pedido.pedido_externo_id}</p>
+            </div>
+          )}
           <div>
             <p className="text-text-muted">Subtotal</p>
             <p className="font-medium text-text">{formatCurrencyBRL(pedido.subtotal)}</p>

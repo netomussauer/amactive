@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/shared/components/ui/Card'
 import { Button } from '@/shared/components/ui/Button'
 import { formatCurrencyBRL } from '@/shared/lib/format'
 import { PdvBuscaProduto } from '../components/PdvBuscaProduto'
+import { PdvCanalSelector } from '../components/PdvCanalSelector'
 import { PdvCarrinho, calcularSubtotalItem } from '../components/PdvCarrinho'
 import { PdvPagamentoForm } from '../components/PdvPagamentoForm'
 import { useCarrinhoStore } from '../store/carrinho.store'
@@ -48,6 +49,10 @@ export function PdvPage() {
 
   return (
     <PageWrapper title="PDV — Nova venda" description="Busque produtos por SKU ou nome para montar a venda.">
+      <div className="mb-6">
+        <PdvCanalSelector />
+      </div>
+
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>

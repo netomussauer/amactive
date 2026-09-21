@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { PageWrapper } from '@/shared/components/layout/PageWrapper'
 import { Card, CardHeader, CardTitle } from '@/shared/components/ui/Card'
 import { Input } from '@/shared/components/ui/Input'
+import { Select } from '@/shared/components/ui/Select'
+import { ORIGEM_CANAL_OPTIONS } from '@/features/vendas'
 import { VendasPorPeriodoChart } from '../components/VendasPorPeriodoChart'
 import { ProdutosMaisVendidosTable } from '../components/ProdutosMaisVendidosTable'
 import { GiroEstoqueTable } from '../components/GiroEstoqueTable'
@@ -23,9 +25,11 @@ function hojeISO(): string {
 export function RelatoriosPage() {
   const [dataInicio, setDataInicio] = useState(trintaDiasAtrasISO())
   const [dataFim, setDataFim] = useState(hojeISO())
+  const [origemCanal, setOrigemCanal] = useState('')
 
   const filtro = { data_inicio: dataInicio, data_fim: dataFim }
-  const vendasQuery = useRelatorioVendas(filtro)
+  // O filtro de canal vale só para "Faturamento por dia" (vendas-por-período).
+  const vendasQuery = useRelatorioVendas({ ...filtro, origem_canal: origemCanal || undefined })
   const produtosQuery = useRelatorioProdutos(filtro)
   const giroQuery = useRelatorioGiroEstoque(filtro)
 
@@ -43,6 +47,19 @@ export function RelatoriosPage() {
             Até
           </label>
           <Input id="relatorio-data-fim" type="date" value={dataFim} onChange={(event) => setDataFim(event.target.value)} />
+        </div>
+        <div className="w-56">
+          <label htmlFor="relatorio-canal" className="mb-1.5 block text-sm font-medium text-text">
+            Canal (faturamento por dia)
+          </label>
+          <Select id="relatorio-canal" value={origemCanal} onChange={(event) => setOrigemCanal(event.target.value)}>
+            <option value="">Todos os canais</option>
+            {ORIGEM_CANAL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </Select>
         </div>
       </div>
 

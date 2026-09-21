@@ -5,10 +5,10 @@ import {
   ProdutosMaisVendidosResponseSchema,
   GiroEstoqueResponseSchema,
 } from '../schemas/relatorio.schema'
-import type { PeriodoFilter } from '../types/relatorio.types'
+import type { PeriodoFilter, VendasPorPeriodoFilter } from '../types/relatorio.types'
 
 export const relatorioService = {
-  async vendasPorPeriodo(filter: Required<PeriodoFilter>) {
+  async vendasPorPeriodo(filter: VendasPorPeriodoFilter) {
     const raw = await apiClient<unknown>(`/relatorios/vendas-por-periodo${buildQueryString(filter)}`)
     return VendasPorPeriodoResponseSchema.parse(raw)
   },

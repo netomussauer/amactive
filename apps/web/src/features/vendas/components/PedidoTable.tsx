@@ -6,6 +6,7 @@ import { TableSkeleton } from '@/shared/components/ui/Skeleton'
 import { formatCurrencyBRL, formatDateTime } from '@/shared/lib/format'
 import { routes } from '@/shared/lib/routes'
 import type { Pedido, StatusPedido } from '../types/pedido.types'
+import { CanalBadge } from './CanalBadge'
 
 type Props = {
   pedidos: Pedido[]
@@ -39,6 +40,7 @@ export function PedidoTable({ pedidos, isLoading }: Props) {
         <TableRow>
           <TableHeadCell>Número</TableHeadCell>
           <TableHeadCell>Data</TableHeadCell>
+          <TableHeadCell>Canal</TableHeadCell>
           <TableHeadCell>Status</TableHeadCell>
           <TableHeadCell className="text-right">Total</TableHeadCell>
         </TableRow>
@@ -48,6 +50,14 @@ export function PedidoTable({ pedidos, isLoading }: Props) {
           <TableRow key={pedido.id} className="cursor-pointer" onClick={() => navigate(routes.pedidoDetalhe(pedido.id))}>
             <TableCell className="font-medium">{pedido.numero}</TableCell>
             <TableCell className="text-text-muted">{formatDateTime(pedido.criado_em)}</TableCell>
+            <TableCell>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <CanalBadge canal={pedido.origem_canal} />
+                {pedido.pedido_externo_id && (
+                  <span className="text-xs text-text-muted">#{pedido.pedido_externo_id}</span>
+                )}
+              </div>
+            </TableCell>
             <TableCell>
               <Badge tone={statusTone[pedido.status]}>{statusLabel[pedido.status]}</Badge>
             </TableCell>

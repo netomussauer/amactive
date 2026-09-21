@@ -6,6 +6,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoInput
@@ -14,8 +15,16 @@ from amactive.contexts.vendas.application.use_cases.consultar_pedidos import (
     ListarPedidosQuery,
     ObterPedidoQuery,
 )
-from amactive.contexts.vendas.application.use_cases.criar_pedido import CriarPedidoUseCase
-from amactive.contexts.vendas.domain.entities import FormaPagamento, Pedido, StatusPedido
+from amactive.contexts.vendas.application.use_cases.registrar_pedido_manual import (
+    RegistrarPedidoManualUseCase,
+)
+from amactive.contexts.vendas.domain.entities import (
+    FormaPagamento,
+    OrigemCanalPedido,
+    Pedido,
+    StatusPedido,
+)
+from amactive.contexts.vendas.domain.exceptions import PedidoExternoDuplicado
 from amactive.contexts.vendas.infrastructure.api.schemas import (
     CriarPedidoRequest,
     ItemPedidoResponse,
@@ -27,6 +36,7 @@ from amactive.contexts.vendas.infrastructure.api.schemas import (
 from amactive.contexts.vendas.infrastructure.persistence.gateways import CatalogoEstoqueGateway
 from amactive.contexts.vendas.infrastructure.persistence.repositories import (
     SqlAlchemyPedidoRepository,
+    violou_unicidade_pedido_externo,
 )
 from amactive.core.security import CurrentUser, get_current_user, requer_papel
 from amactive.shared_kernel.database import get_db_session
@@ -52,6 +62,7 @@ async def listar_pedidos(
     cliente_id: UUID | None = None,
     data_inicio: date | None = None,
     data_fim: date | None = None,
+    origem_canal: OrigemCanalPedido | None = None,
     session: AsyncSession = Depends(get_db_session),
 ) -> PedidoListResponse:
     pedidos, total = await ListarPedidosQuery(SqlAlchemyPedidoRepository(session)).executar(
@@ -61,6 +72,7 @@ async def listar_pedidos(
         cliente_id=cliente_id,
         data_inicio=data_inicio,
         data_fim=data_fim,
+        origem_canal=origem_canal,
     )
     return PedidoListResponse(
         data=[_pedido_response(p) for p in pedidos],
@@ -95,7 +107,7 @@ async def criar_pedido(
     for _tentativa in range(_MAX_TENTATIVAS_DEADLOCK):
         pedido_repo = SqlAlchemyPedidoRepository(session)
         gateway = CatalogoEstoqueGateway(session)
-        use_case = CriarPedidoUseCase(pedido_repo, gateway, gateway)
+        use_case = RegistrarPedidoManualUseCase(pedido_repo, gateway, gateway)
         try:
             pedido = await use_case.executar(
                 cliente_id=payload.cliente_id,
@@ -104,12 +116,25 @@ async def criar_pedido(
                 itens=itens,
                 pagamentos=pagamentos,
                 usuario_id=usuario.id,
+                origem_canal=payload.origem_canal,
+                pedido_externo_id=payload.pedido_externo_id,
             )
             ultimo_erro = None
             break
         except ConflitoTransacional as exc:
             ultimo_erro = exc
             continue
+        except IntegrityError as exc:
+            # Defesa de corrida: a checagem prévia do use case não viu o pedido,
+            # mas outra requisição o gravou antes do nosso INSERT. A violação
+            # ocorre no flush do pedido — antes da baixa de estoque — e o
+            # rollback garante que nada parcial sobra.
+            if payload.pedido_externo_id is None or not violou_unicidade_pedido_externo(exc):
+                raise
+            await session.rollback()
+            raise PedidoExternoDuplicado(
+                payload.origem_canal.value, payload.pedido_externo_id
+            ) from exc
 
     if ultimo_erro is not None or pedido is None:
         raise ultimo_erro  # type: ignore[misc]
@@ -155,6 +180,8 @@ def _pedido_response(pedido: Pedido) -> PedidoResponse:
         valor_total=to_money_str(pedido.valor_total),
         criado_em=pedido.criado_em,
         confirmado_em=pedido.confirmado_em,
+        origem_canal=pedido.origem_canal.value,
+        pedido_externo_id=pedido.pedido_externo_id,
     )
 
 

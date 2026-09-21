@@ -1,16 +1,18 @@
 import { create } from 'zustand'
-import type { CarrinhoItem } from '../types/pedido.types'
+import type { CarrinhoItem, OrigemCanal } from '../types/pedido.types'
 import { calcularDescontoItem } from '../lib/calcular-desconto-item'
 
 type CarrinhoState = {
   itens: CarrinhoItem[]
   clienteId: string | null
   observacao: string
+  origemCanal: OrigemCanal
   addItem: (item: CarrinhoItem) => void
   removeItem: (varianteId: string) => void
   updateQuantidade: (varianteId: string, quantidade: number) => void
   setClienteId: (clienteId: string | null) => void
   setObservacao: (observacao: string) => void
+  setOrigemCanal: (origemCanal: OrigemCanal) => void
   clear: () => void
 }
 
@@ -21,6 +23,7 @@ export const useCarrinhoStore = create<CarrinhoState>((set, get) => ({
   itens: [],
   clienteId: null,
   observacao: '',
+  origemCanal: 'PDV',
 
   addItem: (item) => {
     const existente = get().itens.find((i) => i.varianteId === item.varianteId)
@@ -64,6 +67,7 @@ export const useCarrinhoStore = create<CarrinhoState>((set, get) => ({
 
   setClienteId: (clienteId) => set({ clienteId }),
   setObservacao: (observacao) => set({ observacao }),
+  setOrigemCanal: (origemCanal) => set({ origemCanal }),
 
-  clear: () => set({ itens: [], clienteId: null, observacao: '' }),
+  clear: () => set({ itens: [], clienteId: null, observacao: '', origemCanal: 'PDV' }),
 }))

@@ -713,6 +713,10 @@ paths:
         - name: data_fim
           in: query
           schema: { type: string, format: date }
+        - name: origem_canal
+          in: query
+          description: Filtra pelo canal de origem do pedido (omitido = todos os canais).
+          schema: { $ref: "#/components/schemas/OrigemCanalPedido" }
       responses:
         "200":
           description: Lista paginada de pedidos
@@ -729,6 +733,17 @@ paths:
         envolvidas (ver docs/SDD.md §5.1). Falha (422) se qualquer item não
         tiver saldo de estoque suficiente — nenhuma alteração parcial é
         persistida.
+
+
+        **Registro manual por canal.** `origem_canal` (padrão `PDV`) identifica
+        o canal da venda, para que listagens e relatórios separem os canais; o
+        estoque baixa igual em qualquer canal. `pedido_externo_id` é o número do
+        pedido no canal — só existe para a Nuvemshop (número do pedido na
+        loja). Regras: `NUVEMSHOP` **exige** `pedido_externo_id`; `PDV` e
+        `WHATSAPP` **rejeitam** (422) — o WhatsApp não tem número de pedido em
+        sistema externo. Repetir `NUVEMSHOP` + mesmo número retorna 409 sem
+        baixar estoque. Espaços nas pontas de `pedido_externo_id` são
+        removidos. Nenhuma regra amarra `forma_pagamento` ao `origem_canal`.
       operationId: criarPedido
       x-roles: [ADMIN, VENDEDOR]
       requestBody:
@@ -744,8 +759,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PedidoDetalheResponse"
+        "409":
+          description: >
+            Já existe um pedido `NUVEMSHOP` com o mesmo `pedido_externo_id`
+            (o `detail` cita o número informado). Nada é gravado nem baixado do estoque.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
         "422":
-          description: Dados inválidos ou estoque insuficiente
+          description: >
+            Dados inválidos, estoque insuficiente, `NUVEMSHOP` sem
+            `pedido_externo_id`, ou `PDV`/`WHATSAPP` com `pedido_externo_id`
           content:
             application/json:
               schema:
@@ -1013,6 +1038,10 @@ paths:
           in: query
           required: true
           schema: { type: string, format: date }
+        - name: origem_canal
+          in: query
+          description: Restringe o relatório aos pedidos do canal informado (omitido = todos os canais).
+          schema: { $ref: "#/components/schemas/OrigemCanalPedido" }
       responses:
         "200":
           description: Série temporal de vendas
@@ -1436,7 +1465,11 @@ components:
       enum: [PENDENTE, CONFIRMADO, CANCELADO]
     FormaPagamento:
       type: string
-      enum: [DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO]
+      enum: [DINHEIRO, PIX, CARTAO_DEBITO, CARTAO_CREDITO, NUVEMSHOP]
+    OrigemCanalPedido:
+      type: string
+      description: Canal de origem do pedido.
+      enum: [PDV, WHATSAPP, NUVEMSHOP]
     ItemPedidoRequest:
       type: object
       required: [variante_id, quantidade]
@@ -1457,6 +1490,18 @@ components:
         cliente_id: { type: string, format: uuid, nullable: true }
         desconto: { type: string, pattern: '^\d+\.\d{2}$', default: "0.00" }
         observacao: { type: string, nullable: true }
+        origem_canal:
+          allOf: [{ $ref: "#/components/schemas/OrigemCanalPedido" }]
+          default: PDV
+        pedido_externo_id:
+          type: string
+          minLength: 1
+          maxLength: 100
+          nullable: true
+          description: >
+            Número do pedido na loja Nuvemshop. Obrigatório para NUVEMSHOP e
+            proibido (422) para PDV e WHATSAPP. Espaços nas pontas são
+            removidos. Único por (origem_canal, pedido_externo_id).
         itens:
           type: array
           minItems: 1
@@ -1495,6 +1540,8 @@ components:
         valor_total: { type: string }
         criado_em: { type: string, format: date-time }
         confirmado_em: { type: string, format: date-time, nullable: true }
+        origem_canal: { $ref: "#/components/schemas/OrigemCanalPedido" }
+        pedido_externo_id: { type: string, nullable: true }
     PedidoDetalheResponse:
       allOf:
         - $ref: "#/components/schemas/PedidoResponse"

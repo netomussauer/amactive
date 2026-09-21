@@ -8,6 +8,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.catalogo_estoque.infrastructure.persistence.models import (
@@ -28,9 +29,25 @@ from amactive.contexts.vendas.infrastructure.persistence.models import (
 )
 from amactive.shared_kernel.pagination import offset_limit
 
+_INDICE_PEDIDO_EXTERNO_UNICO = "uq_pedido_origem_canal_externo"
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def violou_unicidade_pedido_externo(exc: IntegrityError) -> bool:
+    """Indica se o `IntegrityError` é a violação do índice único parcial
+    `uq_pedido_origem_canal_externo` (migrations/000005) — e não outra
+    violação de integridade (FK de cliente, `numero` duplicado etc.), que
+    nunca deve ser mascarada como "pedido duplicado"."""
+    causa = getattr(exc.orig, "__cause__", None)
+    nome_constraint = getattr(causa, "constraint_name", None) or getattr(
+        exc.orig, "constraint_name", None
+    )
+    if nome_constraint is not None:
+        return bool(nome_constraint == _INDICE_PEDIDO_EXTERNO_UNICO)
+    return _INDICE_PEDIDO_EXTERNO_UNICO in str(exc.orig)
 
 
 class SqlAlchemyPedidoRepository:
@@ -154,6 +171,19 @@ class SqlAlchemyPedidoRepository:
             return None
         return await self._montar_pedido(pedido_modelo)
 
+    async def existe_pedido_externo(
+        self, *, origem_canal: OrigemCanalPedido, pedido_externo_id: str
+    ) -> bool:
+        encontrado = await self._session.scalar(
+            select(PedidoModel.id)
+            .where(
+                PedidoModel.origem_canal == origem_canal.value,
+                PedidoModel.pedido_externo_id == pedido_externo_id,
+            )
+            .limit(1)
+        )
+        return encontrado is not None
+
     async def listar(
         self,
         *,
@@ -163,11 +193,14 @@ class SqlAlchemyPedidoRepository:
         cliente_id: UUID | None,
         data_inicio: date | None,
         data_fim: date | None,
+        origem_canal: OrigemCanalPedido | None = None,
     ) -> tuple[list[Pedido], int]:
         offset, limit = offset_limit(page=page, per_page=per_page)
         condicoes = []
         if status is not None:
             condicoes.append(PedidoModel.status == status.value)
+        if origem_canal is not None:
+            condicoes.append(PedidoModel.origem_canal == origem_canal.value)
         if cliente_id is not None:
             condicoes.append(PedidoModel.cliente_id == cliente_id)
         if data_inicio is not None:
