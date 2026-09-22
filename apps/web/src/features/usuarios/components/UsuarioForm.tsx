@@ -35,12 +35,19 @@ export function UsuarioForm({ onSuccess }: Props) {
     mutate(values, {
       onSuccess,
       onError: (error) => {
-        // 409 = e-mail já cadastrado para outro usuário (ver docs/openapi.yaml
-        // POST /usuarios). O toast de erro genérico já aparece via
-        // shared/lib/query-client.ts; aqui marcamos o campo específico para
-        // o usuário corrigir sem precisar adivinhar qual campo errou.
-        const detail = error instanceof ApiError ? error.detail : undefined
-        setError('email', { message: detail ?? 'Não foi possível cadastrar. Verifique o e-mail informado.' })
+        // Só um 409 (e-mail já cadastrado, ver docs/openapi.yaml POST
+        // /usuarios) é, de fato, um problema NO CAMPO de e-mail — aí faz
+        // sentido marcar o campo para o usuário corrigir. Qualquer outro
+        // erro (rede, 5xx, etc.) NÃO pode ser atribuído ao e-mail: nada
+        // garante que o cadastro falhou de verdade (ex.: "Failed to fetch"
+        // pode significar que a resposta se perdeu DEPOIS de a API já ter
+        // criado o usuário — o card mentiria dizendo "verifique o e-mail"
+        // sobre um cadastro que já existe). Nesses casos, o toast genérico
+        // de shared/lib/query-client.ts (via getErrorMessage) já mostra a
+        // mensagem real — não duplicar nem inventar uma causa aqui.
+        if (error instanceof ApiError && error.status === 409) {
+          setError('email', { message: error.detail ?? 'Este e-mail já está em uso por outro usuário.' })
+        }
       },
     })
   }
