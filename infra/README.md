@@ -358,9 +358,6 @@ que `STORE_ID` é exatamente o `store_id` que a Nuvemshop envia no payload.
 
 ## Próximos passos (fora do escopo desta tarefa)
 
-- Path filtering no interceptor `cel` de `triggers.yaml`: hoje qualquer
-  push em `main` dispara os dois pipelines (api + web), mesmo que só um
-  tenha mudado — mesma limitação aceita pelo amfit/realtpmsys hoje.
 - `migrations-configmap.yaml` continua sincronizado à mão com
   `migrations/*.up.sql` — mas desde `test_migrations_configmap_espelho.py`
   (rodando de verdade em CI, ver `task-python-test.yaml`) uma divergência
