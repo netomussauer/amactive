@@ -17,12 +17,23 @@
 # monitoring, não exclusivo de build, ~70% de CPU/memória já reservados em
 # steady-state) dois `kaniko-build-push` concorrentes já bastam para
 # `ExceededNodeResources` (visto na prática em 2026-09-22). Cada Trigger
-# below só cria o PipelineRun do seu lado se o push tiver tocado um
-# caminho relevante: `apps/api/**`/`migrations/**`/`infra/k8s/api/**` (ou
-# vice-versa para web) OU um dos arquivos de infra Tekton genuinamente
-# compartilhados (git-clone/kaniko/o próprio triggers.yaml — mudar
-# qualquer um desses dispara os dois, de propósito). Um push só de
-# `docs/*.md`/`infra/README.md` agora não builda nada.
+# abaixo só cria o PipelineRun do seu lado se o push tiver tocado um
+# caminho que MUDA A IMAGEM publicada: `apps/api/**`/`migrations/**`/
+# `infra/k8s/api/**` (ou vice-versa para web).
+#
+# Deliberadamente NÃO inclui `infra/tekton/**` (task de git-clone/kaniko,
+# os pipelines, este próprio arquivo) como "compartilhado" — uma primeira
+# versão desta filtragem incluía, com a lógica de "mudou algo que os dois
+# pipelines usam, builda os dois por precaução". Na prática isso builda (e
+# faz `rollout-restart` de) uma imagem IDÊNTICA à já publicada toda vez
+# que só a definição do PIPELINE muda, sem nenhum código de aplicação
+# novo — desperdício puro, e foi exatamente o que consumiu o node inteiro
+# por 30min sem produzir nenhuma imagem nova em 2026-09-22. Uma mudança em
+# `infra/tekton/**` só precisa valer para o PRÓXIMO push de código real;
+# para testar a Task/Pipeline em si isoladamente, use os
+# `pipelinerun-*-manual.yaml.example` (`kubectl create`, não dispara pelo
+# webhook). Um push só de `docs/*.md`/`infra/README.md`/`infra/tekton/**`
+# agora não builda nada.
 #
 # Sobre o interceptor "github": não existe ClusterInterceptor "gitea" neste
 # cluster (só cel, github, gitlab, bitbucket, slack). Gitea >= 1.16 envia,
@@ -239,14 +250,9 @@ spec:
                 - key: .dockerconfigjson
                   path: config.json
 ---
-# Caminhos compartilhados: mudar qualquer um destes dispara os DOIS
-# Triggers (api e web), de propósito — são infra Tekton genuinamente
-# comum aos dois pipelines (task de clone/kaniko, este próprio arquivo).
-# Repetido literalmente nos dois filtros abaixo (CEL não tem import/const
-# entre objetos separados) — se a lista mudar, atualizar nos dois.
-#
 # amactive-gitea-push-api: só cria o PipelineRun da API se o push tocou
-# apps/api/**, migrations/**, infra/k8s/api/** ou um dos compartilhados.
+# apps/api/**, migrations/** ou infra/k8s/api/** — nunca infra/tekton/**
+# (ver nota no cabeçalho deste arquivo).
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: Trigger
@@ -284,10 +290,7 @@ spec:
             body.ref == 'refs/heads/main' && body.head_commit.id != '' &&
             body.commits.exists(c, (c.added + c.modified + c.removed).exists(f,
               f.startsWith('apps/api/') || f.startsWith('migrations/') ||
-              f.startsWith('infra/k8s/api/') ||
-              f in ['infra/tekton/pipeline-api.yaml', 'infra/tekton/task-python-test.yaml',
-                    'infra/tekton/task-amactive-git-clone.yaml', 'infra/tekton/task-kaniko.yaml',
-                    'infra/tekton/triggers.yaml']
+              f.startsWith('infra/k8s/api/')
             ))
         - name: overlays
           value:
@@ -296,8 +299,8 @@ spec:
   template:
     ref: amactive-build-api-template
 ---
-# amactive-gitea-push-web: mesma ideia, filtro de apps/web/**,
-# infra/k8s/web/** + os mesmos compartilhados.
+# amactive-gitea-push-web: mesma ideia, filtro de apps/web/** e
+# infra/k8s/web/**.
 apiVersion: triggers.tekton.dev/v1beta1
 kind: Trigger
 metadata:
@@ -333,10 +336,7 @@ spec:
           value: >-
             body.ref == 'refs/heads/main' && body.head_commit.id != '' &&
             body.commits.exists(c, (c.added + c.modified + c.removed).exists(f,
-              f.startsWith('apps/web/') || f.startsWith('infra/k8s/web/') ||
-              f in ['infra/tekton/pipeline-web.yaml', 'infra/tekton/task-node-test.yaml',
-                    'infra/tekton/task-amactive-git-clone.yaml', 'infra/tekton/task-kaniko.yaml',
-                    'infra/tekton/triggers.yaml']
+              f.startsWith('apps/web/') || f.startsWith('infra/k8s/web/')
             ))
         - name: overlays
           value:
