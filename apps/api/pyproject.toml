@@ -30,6 +30,11 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.11",
+    # Só usada por tests/unit/test_migrations_configmap_espelho.py (parseia
+    # infra/k8s/api/migrations-configmap.yaml) — não é dependência da
+    # aplicação. Sem isto instalado, `pytest.importorskip("yaml")` faz esse
+    # teste pular silenciosamente tanto localmente quanto em CI.
+    "pyyaml>=6.0",
 ]
 
 [build-system]

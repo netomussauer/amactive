@@ -12,6 +12,16 @@
 # usado por outros apps). Os testes de integração continuam rodando
 # localmente/manualmente (ver apps/api/README.md) — cobrir isso no pipeline
 # fica para uma iteração futura (ex: Postgres efêmero via sidecar/Job).
+#
+# Layout do workspace de teste (`/work`) — NÃO achata mais só o conteúdo de
+# `package-path` na raiz de `/work`: reconstrói o mínimo da estrutura do
+# monorepo (`/work/apps/api`, `/work/migrations`,
+# `/work/infra/k8s/api/migrations-configmap.yaml`) para que
+# `tests/unit/test_migrations_configmap_espelho.py` (guarda contra o
+# ConfigMap manual divergir de `migrations/*.up.sql`) deixe de pular sempre
+# em CI — antes desta task só copiava `apps/api/`, então
+# `Path(__file__).resolve().parents[4]` nunca alcançava a raiz do repo e o
+# teste nunca rodava de verdade em pipeline, só localmente.
 ---
 apiVersion: tekton.dev/v1
 kind: Task
@@ -65,10 +75,29 @@ spec:
         #!/usr/bin/env bash
         set -eu
 
-        echo ">>> copiando $(params.package-path) do workspace para /work"
-        mkdir -p /work
-        cp -a "$(workspaces.source.path)/$(params.package-path)/." /work/
-        cd /work
+        SRC="$(workspaces.source.path)"
+        PKG="$(params.package-path)"
+
+        echo ">>> copiando $PKG do workspace para /work/$PKG"
+        mkdir -p "/work/$PKG"
+        cp -a "$SRC/$PKG/." "/work/$PKG/"
+
+        # Estrutura mínima do monorepo além de $PKG — só o que
+        # test_migrations_configmap_espelho.py precisa para não pular (ver
+        # comentário no cabeçalho deste arquivo). Copiados só se existirem:
+        # outra chamada desta Task (ex.: um `package-path` que não seja
+        # apps/api) não deve falhar por isso.
+        if [ -d "$SRC/migrations" ]; then
+          echo ">>> copiando migrations/ do workspace para /work/migrations"
+          cp -a "$SRC/migrations" /work/migrations
+        fi
+        if [ -f "$SRC/infra/k8s/api/migrations-configmap.yaml" ]; then
+          echo ">>> copiando infra/k8s/api/migrations-configmap.yaml"
+          mkdir -p /work/infra/k8s/api
+          cp -a "$SRC/infra/k8s/api/migrations-configmap.yaml" /work/infra/k8s/api/migrations-configmap.yaml
+        fi
+
+        cd "/work/$PKG"
 
         echo ">>> python version"
         python --version
