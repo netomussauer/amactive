@@ -1,0 +1,93 @@
+# Task — `npm ci` + `eslint` + `vitest --run` em apps/web/. Par da
+# `task-python-test.yaml` (mesma ideia: lint + testes antes do build da
+# imagem), ferramentas trocadas pelas do frontend (ver apps/web/package.json
+# `scripts`). Fecha o débito documentado no cabeçalho antigo de
+# pipeline-web.yaml ("sem stage de teste/lint... fica para uma Fase 2").
+#
+# `npm run test` roda `vitest` puro (modo watch, nunca termina) — por isso
+# o script chama `npx vitest run` diretamente, não `npm run test`.
+#
+# DNS: o CoreDNS deste lab retorna AAAA-only intermitente para
+# registry.npmjs.org (mesmo bug documentado em pipeline-web.yaml e no
+# realtpmsys), causando EAI_AGAIN no `npm ci`. Esta Task NÃO define
+# `dnsPolicy`/`dnsConfig` própria — herda o do Pod do PipelineRun que a
+# invoca (ver `taskRunTemplate.podTemplate` em
+# infra/tekton/triggers.yaml, já configurado para o pipeline
+# `amactive-build-web`). Rodar esta Task fora desse Pipeline (ex.: TaskRun
+# manual) exige repetir o mesmo `dnsConfig`.
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: node-test
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "ci-task"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  description: |
+    Executa `eslint` e `vitest run` no diretório especificado. Usado pelo
+    pipeline do web do AMACTIVE antes do build da imagem.
+  workspaces:
+    - name: source
+      description: Workspace contendo o repositório clonado.
+  params:
+    - name: package-path
+      description: Caminho relativo ao workspace onde rodar os testes.
+      type: string
+      default: apps/web
+    - name: node-version
+      description: Versão da imagem node a usar (mesma do Dockerfile de build).
+      type: string
+      default: "20"
+  # npm cache num emptyDir local (não no workspace `source`) — mesmo
+  # racional do pipcache do python-test: isola do clone original e evita
+  # qualquer problema de locking/permissão na storageClass de rede.
+  volumes:
+    - name: npmcache
+      emptyDir: {}
+  steps:
+    - name: lint-test
+      image: node:$(params.node-version)-alpine
+      workingDir: /work
+      env:
+        - name: npm_config_cache
+          value: /npmcache
+      volumeMounts:
+        - name: npmcache
+          mountPath: /npmcache
+      script: |
+        #!/bin/sh
+        set -eu
+
+        echo ">>> copiando $(params.package-path) do workspace para /work"
+        mkdir -p /work
+        cp -a "$(workspaces.source.path)/$(params.package-path)/." /work/
+        cd /work
+
+        echo ">>> node/npm version"
+        node --version
+        npm --version
+
+        echo ">>> npm ci"
+        npm ci
+
+        echo ">>> npm run lint"
+        npm run lint
+
+        echo ">>> npx vitest run"
+        # `npm run test` roda `vitest` em modo watch (nunca sai) — ver
+        # cabeçalho deste arquivo. `--run` é o equivalente CI de `vitest`.
+        npx vitest run
+      computeResources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"

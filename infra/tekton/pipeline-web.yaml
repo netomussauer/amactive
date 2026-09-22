@@ -3,12 +3,9 @@
 #
 # Stages:
 #   git-clone (shallow do mirror Gitea)
+#   → node-test (eslint + vitest run, ver infra/tekton/task-node-test.yaml)
 #   → kaniko-build-push (apps/web/Dockerfile → harbor.lab.local/amactive/web)
 #   → rollout-restart (deploy amactive-web no ns amactive)
-#
-# Sem stage de teste/lint: mesmo padrão do amfit-build-web (que também não
-# roda `npm run lint`/`vitest` no pipeline) — fica para uma Fase 2, ver
-# infra/README.md "Próximos passos".
 #
 # ATENÇÃO — mesmo problema de DNS documentado pelo realtpmsys
 # (infra/tekton/web/pipeline.yaml e example-pipelinerun.yaml.example): o
@@ -33,7 +30,8 @@ metadata:
 spec:
   description: |
     Pipeline de build + push da imagem AMACTIVE Web (Vite/React -> nginx).
-    Stages: git-clone -> kaniko build/push (apps/web/Dockerfile) -> rollout-restart.
+    Stages: git-clone -> node-test (lint+vitest) -> kaniko build/push
+    (apps/web/Dockerfile) -> rollout-restart.
   params:
     - name: git-url
       type: string
@@ -78,8 +76,21 @@ spec:
         - name: source
           workspace: source
 
-    - name: kaniko-build-push
+    - name: node-test
       runAfter: ["git-clone"]
+      timeout: "10m"
+      taskRef:
+        kind: Task
+        name: node-test
+      params:
+        - name: package-path
+          value: "apps/web"
+      workspaces:
+        - name: source
+          workspace: source
+
+    - name: kaniko-build-push
+      runAfter: ["node-test"]
       # 1 retry / 15m por tentativa: build do Vite (npm ci + build) é mais
       # pesado que o da API — mesmo racional de orçamento do
       # amfit-build-web.
