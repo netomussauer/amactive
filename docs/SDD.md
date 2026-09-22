@@ -327,6 +327,8 @@ Pontos de extensão deliberadamente deixados abertos no domínio, para que featu
 
 Versionamento de API: o MVP expõe rotas sem prefixo de versão explícito (`/produtos`, não `/v1/produtos`) por simplicidade, mas o `openapi.yaml` já fixa `info.version: "0.1.0"` (SemVer) — a introdução de `/v2` fica reservada para quando houver o primeiro breaking change real (ex: portal de cliente final com regras diferentes).
 
+**Canal de venda externo (Nuvemshop) — status real, não mais hipotético.** Diferente das linhas acima (extensões ainda não iniciadas), a integração com a Nuvemshop já foi desenhada, implementada e testada por completo (contexto `integracao_canais`: webhook HMAC, worker com outbox de estoque/catálogo, reconciliação) — ver `docs/avaliacao-integracao-nuvemshop.md` e `docs/design-integracao-nuvemshop.md`. Está **em espera**: o plano contratado da loja não dá acesso à API necessária. Enquanto isso, pedidos de qualquer canal (PDV, WhatsApp, Nuvemshop) são registrados manualmente via `origem_canal`/`pedido_externo_id` em `Pedido` (ver `docs/avaliacao-alternativas-canal-venda.md` para as alternativas comparadas e o gate de decisão).
+
 ---
 
 ## 7. Riscos e Decisões Pendentes
@@ -335,10 +337,15 @@ Versionamento de API: o MVP expõe rotas sem prefixo de versão explícito (`/pr
 - **Concorrência na baixa de estoque**: duas vendas simultâneas da última unidade de uma variante podem gerar condição de corrida. Mitigação planejada: `SELECT ... FOR UPDATE` na linha de `estoque` dentro da transação de confirmação do pedido (a ser implementado pelo `dev-expert-fullcycle` — documentado aqui como requisito não-funcional obrigatório do caso de uso `ConfirmarPedido`).
 - **Ausência de testes de carga**: não há expectativa de alto tráfego no MVP (uso interno de uma loja), mas isso deve ser revisitado se o sistema for exposto externamente.
 
-### Decisões Pendentes (requerem validação com stakeholders/outros agentes)
+### Decisões que estavam pendentes e já foram tomadas
+
+- **Estratégia de deploy**: não é mais só `docker-compose` local. A API e o web rodam em Kubernetes (K3s de laboratório), com GitOps via ArgoCD (`automated: {prune, selfHeal}` — mudança de estado do cluster só acontece via commit+push, nunca `kubectl apply` avulso em recurso rastreado) e CI/CD via Tekton disparado por webhook do Gitea. Ver `infra/README.md` para topologia, manifestos e o passo a passo operacional.
+- **Ferramenta de migrations**: decidido pelo script Python equivalente (`apps/api/src/amactive/scripts/apply_migrations.py`), não `golang-migrate`. Roda automaticamente no `docker-entrypoint.sh` antes de subir a API/worker — qualquer restart de pod com uma migration nova pendente a aplica sozinho.
+
+### Decisões ainda pendentes (requerem validação com stakeholders/outros agentes)
+
 - Definição final de índices e constraints de schema fica a cargo do `data-expert` (este SDD e `data-model.md` fornecem o modelo lógico; migrations físicas finais — incluindo particionamento futuro de `movimentacao_estoque` se o histórico crescer muito — são responsabilidade dele).
-- Estratégia exata de deploy (ainda não definida pelo usuário) — hoje o escopo é somente `docker-compose` local.
-- Ferramenta exata de aplicação de migrations SQL puro (`golang-migrate` via Makefile vs. script Python equivalente) — ambas compatíveis com o formato de arquivo já adotado em `migrations/`.
+- Gate de decisão do canal de venda externo (Nuvemshop vs. alternativas vs. manual) — ver nota em §6 e `docs/avaliacao-alternativas-canal-venda.md`.
 
 ### Premissas Assumidas
 - Operação de uma única loja/depósito no MVP (multi-loja é evolução futura, ver §6).
