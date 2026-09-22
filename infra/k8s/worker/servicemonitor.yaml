@@ -1,0 +1,43 @@
+# Raspagem Prometheus das métricas de negócio do worker (fila de webhook,
+# outbox de estoque/catálogo, conflitos manuais — ver
+# apps/api/src/amactive/contexts/integracao_canais/infrastructure/metrics.py).
+# Padrão idêntico ao `realtpmsys-api` ServiceMonitor deste cluster: label
+# `release: kube-prometheus-stack` é o que o `Prometheus.spec.
+# serviceMonitorSelector` (kube-prometheus-stack, ns monitoring) usa para
+# descobrir ServiceMonitors — sem ela, este objeto existe mas nunca é
+# raspado.
+#
+# Sem dado nenhum enquanto `amactive-worker` estiver com `replicas: 0`
+# (integração Nuvemshop em espera, ver infra/README.md) — fica pronto para
+# quando o worker for religado, sem precisar lembrar de criar isto depois.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: amactive-worker
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-worker"
+    app.kubernetes.io/component: "service-monitor"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+    release: "kube-prometheus-stack"
+spec:
+  namespaceSelector:
+    matchNames:
+      - amactive
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "amactive-worker"
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: false
+      relabelings:
+        - sourceLabels: ["__meta_kubernetes_pod_name"]
+          targetLabel: pod
+        - sourceLabels: ["__meta_kubernetes_namespace"]
+          targetLabel: namespace

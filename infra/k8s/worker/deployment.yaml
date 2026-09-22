@@ -15,6 +15,12 @@
 # limite da Nuvemshop por loja) é local ao processo — mais de uma réplica
 # estouraria o limite compartilhado.
 #
+# `ports.metrics` (9090): servidor HTTP só-de-métricas do
+# `prometheus_client` (thread própria, ver run_worker.py) — não é um
+# servidor de aplicação, não recebe tráfego de negócio. Consumido pelo
+# Service + ServiceMonitor em service.yaml/servicemonitor.yaml, deste
+# mesmo diretório.
+#
 # Mesma imagem da API. `command` sobrescreve o ENTRYPOINT da imagem
 # (docker-entrypoint.sh) de propósito: ele roda apply_migrations antes de
 # executar o CMD, e quem aplica migrations é o pod da API — o worker só
@@ -75,6 +81,10 @@ spec:
           image: harbor.lab.local/amactive/api:latest
           imagePullPolicy: Always
           command: ["python", "-m", "amactive.scripts.run_worker"]
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
           env:
             - name: PG_PASSWORD
               valueFrom:

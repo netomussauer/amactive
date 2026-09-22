@@ -57,6 +57,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Final
 
+from prometheus_client import start_http_server
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.integracao_canais.application.use_cases.consumir_webhooks_pendentes import (
@@ -134,6 +135,15 @@ _INTERVALO_RECONCILIACAO: Final = timedelta(hours=1)
 # obsolescência do probe (15 min) precisa ficar acima da volta mais longa
 # possível — uma reconciliação grande sob o rate limit de 2 req/s.
 _HEARTBEAT_ARQUIVO: Final = Path("/tmp/worker-heartbeat")
+
+
+# Porta do servidor HTTP só-de-métricas (`prometheus_client.start_http_server`,
+# thread própria, não interfere no loop assíncrono) — expõe
+# `webhook_evento_recebido_total`, `integracao_outbox_pendente{fila=...}`
+# etc. (infrastructure/metrics.py) no formato Prometheus. O worker não tem
+# nenhum outro servidor HTTP; ver infra/k8s/worker/service.yaml +
+# servicemonitor.yaml para como isso chega ao Prometheus do lab.
+_METRICS_PORT: Final = 9090
 
 
 def _registrar_heartbeat(caminho: Path = _HEARTBEAT_ARQUIVO) -> None:
@@ -404,6 +414,9 @@ async def _main_async() -> None:
 
 
 def main() -> None:
+    # Thread própria do prometheus_client — antes do asyncio.run, uma única
+    # vez por processo (nunca por tick, diferente do heartbeat).
+    start_http_server(_METRICS_PORT)
     try:
         asyncio.run(_main_async())
     except CredencialCanalAusente as exc:

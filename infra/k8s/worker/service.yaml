@@ -1,0 +1,26 @@
+# Expõe só a porta de métricas do worker (ver deployment.yaml) para o
+# Prometheus raspar via ServiceMonitor (servicemonitor.yaml, mesmo
+# diretório) — ClusterIP, nunca LoadBalancer/NodePort: o worker não recebe
+# tráfego de negócio nenhum (não tem servidor de aplicação), só é raspado
+# de dentro do cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: amactive-worker
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-worker"
+    app.kubernetes.io/component: "worker"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: "amactive-worker"
+  ports:
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP

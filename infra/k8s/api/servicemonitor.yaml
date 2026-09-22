@@ -1,0 +1,39 @@
+# Raspagem Prometheus de /metrics da API — RED (rate/errors/duration) via
+# prometheus-fastapi-instrumentator, mais webhook_evento_recebido_total
+# (o único incremento dessa métrica que acontece no processo da API, não
+# do worker — ver infrastructure/api/router.py do contexto
+# integracao_canais). Mesmo padrão do ServiceMonitor `realtpmsys-api` já
+# usado neste cluster (label `release: kube-prometheus-stack` — é o que o
+# Prometheus do kube-prometheus-stack, ns monitoring, usa para descobrir
+# ServiceMonitors).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: amactive-api
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-api"
+    app.kubernetes.io/component: "service-monitor"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+    release: "kube-prometheus-stack"
+spec:
+  namespaceSelector:
+    matchNames:
+      - amactive
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: "amactive-api"
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: false
+      relabelings:
+        - sourceLabels: ["__meta_kubernetes_pod_name"]
+          targetLabel: pod
+        - sourceLabels: ["__meta_kubernetes_namespace"]
+          targetLabel: namespace

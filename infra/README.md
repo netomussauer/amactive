@@ -358,22 +358,16 @@ que `STORE_ID` é exatamente o `store_id` que a Nuvemshop envia no payload.
 
 ## Próximos passos (fora do escopo desta tarefa)
 
-- Observabilidade da integração: as métricas do worker (fila de outbox,
-  conflitos manuais) vivem no processo do worker, que ainda não expõe
-  `/metrics`; e não há `ServiceMonitor` para o amactive (nem para a API).
-
 - Path filtering no interceptor `cel` de `triggers.yaml`: hoje qualquer
   push em `main` dispara os dois pipelines (api + web), mesmo que só um
   tenha mudado — mesma limitação aceita pelo amfit/realtpmsys hoje.
-- Lint/test no pipeline do web (`npm run lint` / `vitest`) — omitido por
-  paridade com o `amfit-build-web`, que também não roda.
-- Automatizar a sincronização de `migrations-configmap.yaml` com
-  `migrations/*.up.sql` (hoje manual) — ou reconsiderar mudar o build
-  context do `Dockerfile` da API para a raiz do monorepo, incluindo
-  `migrations/` na imagem (como o `apps/web` do amfit faz, contexto "." +
-  dockerfile em subdiretório) — decisão explicitamente adiada nesta tarefa
-  para não alterar o `docker-compose.yml`/`Dockerfile` já validados
-  localmente.
+- `migrations-configmap.yaml` continua sincronizado à mão com
+  `migrations/*.up.sql` — mas desde `test_migrations_configmap_espelho.py`
+  (rodando de verdade em CI, ver `task-python-test.yaml`) uma divergência
+  agora QUEBRA o build, em vez de silenciosamente ir parar em produção.
+  Automatizar a geração do ConfigMap (ou reconsiderar mudar o build context
+  do `Dockerfile` da API para incluir `migrations/` na imagem, como o
+  `apps/web` do amfit faz) continua fora do escopo.
 - Migrar armazenamento de imagens de produto para MinIO/S3 — decisão já
   tomada de NÃO fazer isso agora; o PVC local-path é a solução deste MVP.
 # teste de webhook - 2026-09-14T18:40:42Z
