@@ -1,12 +1,28 @@
 # Triggers Tekton para o webhook push do Gitea no repo labadmin/amactive.
 #
-# Fluxo:
+# Fluxo (DOIS Triggers independentes na mesma EventListener — path
+# filtering, ver nota abaixo):
 #   Gitea push → EventListener (amactive-event-listener)
-#                ↓ github interceptor (valida HMAC via X-Hub-Signature-256)
-#                ↓ cel interceptor (filtra refs/heads/main + extrai short_sha)
-#                ↓ amactive-gitea-binding (mapeia body → params)
-#                ↓ amactive-build-template (cria 2 PipelineRuns: api + web)
-#   PipelineRuns amactive-build-api-<sha7>-... e amactive-build-web-<sha7>-...
+#     ├─ Trigger amactive-gitea-push-api
+#     │    ↓ github interceptor (valida HMAC) → cel interceptor (filtra
+#     │      refs/heads/main + só segue se algum arquivo do push tocou a
+#     │      API) → amactive-gitea-binding → amactive-build-api-template
+#     │    PipelineRun amactive-build-api-<sha7>-...
+#     └─ Trigger amactive-gitea-push-web (mesma ideia, filtro do web)
+#          PipelineRun amactive-build-web-<sha7>-...
+#
+# Path filtering (CEL): antes, TODO push disparava os dois pipelines,
+# mesmo quando só um lado (ou só docs/infra não-relacionada) mudava — no
+# nó `workload: cicd` deste lab (compartilhado com ArgoCD/Gitea/Harbor/
+# monitoring, não exclusivo de build, ~70% de CPU/memória já reservados em
+# steady-state) dois `kaniko-build-push` concorrentes já bastam para
+# `ExceededNodeResources` (visto na prática em 2026-09-22). Cada Trigger
+# below só cria o PipelineRun do seu lado se o push tiver tocado um
+# caminho relevante: `apps/api/**`/`migrations/**`/`infra/k8s/api/**` (ou
+# vice-versa para web) OU um dos arquivos de infra Tekton genuinamente
+# compartilhados (git-clone/kaniko/o próprio triggers.yaml — mudar
+# qualquer um desses dispara os dois, de propósito). Um push só de
+# `docs/*.md`/`infra/README.md` agora não builda nada.
 #
 # Sobre o interceptor "github": não existe ClusterInterceptor "gitea" neste
 # cluster (só cel, github, gitlab, bitbucket, slack). Gitea >= 1.16 envia,
@@ -45,7 +61,7 @@ spec:
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerTemplate
 metadata:
-  name: amactive-build-template
+  name: amactive-build-api-template
   namespace: cicd
   labels:
     app.kubernetes.io/component: "trigger-template"
@@ -69,9 +85,6 @@ spec:
   # já encontrado no amfit-build-template (infra/tekton/trigger-amfit.yaml)
   # em 2026-09-04 — grafia abaixo já replica a correção.
   resourcetemplates:
-    # -------------------------------------------------------------------
-    # PipelineRun — API
-    # -------------------------------------------------------------------
     - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
@@ -127,10 +140,30 @@ spec:
               items:
                 - key: .dockerconfigjson
                   path: config.json
-
-    # -------------------------------------------------------------------
-    # PipelineRun — Web
-    # -------------------------------------------------------------------
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: amactive-build-web-template
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger-template"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  params:
+    - name: git-url
+    - name: git-revision
+    - name: git-revision-short
+    - name: git-ref
+    - name: pusher
+      default: "unknown"
+  # ATENÇÃO: "resourcetemplates" minúsculo — ver nota no template da API.
+  resourcetemplates:
     - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
@@ -206,10 +239,19 @@ spec:
                 - key: .dockerconfigjson
                   path: config.json
 ---
+# Caminhos compartilhados: mudar qualquer um destes dispara os DOIS
+# Triggers (api e web), de propósito — são infra Tekton genuinamente
+# comum aos dois pipelines (task de clone/kaniko, este próprio arquivo).
+# Repetido literalmente nos dois filtros abaixo (CEL não tem import/const
+# entre objetos separados) — se a lista mudar, atualizar nos dois.
+#
+# amactive-gitea-push-api: só cria o PipelineRun da API se o push tocou
+# apps/api/**, migrations/**, infra/k8s/api/** ou um dos compartilhados.
+---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: Trigger
 metadata:
-  name: amactive-gitea-push
+  name: amactive-gitea-push-api
   namespace: cicd
   labels:
     app.kubernetes.io/component: "trigger"
@@ -238,13 +280,70 @@ spec:
         name: cel
       params:
         - name: filter
-          value: "body.ref == 'refs/heads/main' && body.head_commit.id != ''"
+          value: >-
+            body.ref == 'refs/heads/main' && body.head_commit.id != '' &&
+            body.commits.exists(c, (c.added + c.modified + c.removed).exists(f,
+              f.startsWith('apps/api/') || f.startsWith('migrations/') ||
+              f.startsWith('infra/k8s/api/') ||
+              f in ['infra/tekton/pipeline-api.yaml', 'infra/tekton/task-python-test.yaml',
+                    'infra/tekton/task-amactive-git-clone.yaml', 'infra/tekton/task-kaniko.yaml',
+                    'infra/tekton/triggers.yaml']
+            ))
         - name: overlays
           value:
             - key: short_sha
               expression: "body.head_commit.id.truncate(7)"
   template:
-    ref: amactive-build-template
+    ref: amactive-build-api-template
+---
+# amactive-gitea-push-web: mesma ideia, filtro de apps/web/**,
+# infra/k8s/web/** + os mesmos compartilhados.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: Trigger
+metadata:
+  name: amactive-gitea-push-web
+  namespace: cicd
+  labels:
+    app.kubernetes.io/component: "trigger"
+    app.kubernetes.io/managed-by: "argocd"
+    app.kubernetes.io/name: "amactive-tekton"
+    app.kubernetes.io/part-of: "amactive"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  serviceAccountName: tekton-amactive
+  bindings:
+    - ref: amactive-gitea-binding
+      kind: TriggerBinding
+  interceptors:
+    - ref:
+        kind: ClusterInterceptor
+        name: github
+      params:
+        - name: secretRef
+          value:
+            secretName: gitea-webhook-secret-amactive
+            secretKey: secretToken
+    - ref:
+        kind: ClusterInterceptor
+        name: cel
+      params:
+        - name: filter
+          value: >-
+            body.ref == 'refs/heads/main' && body.head_commit.id != '' &&
+            body.commits.exists(c, (c.added + c.modified + c.removed).exists(f,
+              f.startsWith('apps/web/') || f.startsWith('infra/k8s/web/') ||
+              f in ['infra/tekton/pipeline-web.yaml', 'infra/tekton/task-node-test.yaml',
+                    'infra/tekton/task-amactive-git-clone.yaml', 'infra/tekton/task-kaniko.yaml',
+                    'infra/tekton/triggers.yaml']
+            ))
+        - name: overlays
+          value:
+            - key: short_sha
+              expression: "body.head_commit.id.truncate(7)"
+  template:
+    ref: amactive-build-web-template
 ---
 apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
@@ -262,7 +361,8 @@ metadata:
 spec:
   serviceAccountName: tekton-amactive
   triggers:
-    - triggerRef: amactive-gitea-push
+    - triggerRef: amactive-gitea-push-api
+    - triggerRef: amactive-gitea-push-web
   resources:
     kubernetesResource:
       serviceType: ClusterIP
