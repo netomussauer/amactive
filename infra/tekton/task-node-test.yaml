@@ -84,10 +84,17 @@ spec:
         # `npm run test` roda `vitest` em modo watch (nunca sai) — ver
         # cabeçalho deste arquivo. `--run` é o equivalente CI de `vitest`.
         npx vitest run
+      # Requests modestos de propósito: o nó `workload: cicd` deste lab é
+      # compartilhado com ArgoCD/Gitea/Harbor/monitoring (não é exclusivo
+      # de build), e já roda perto de ~70% de CPU/memória RESERVADOS em
+      # steady-state — pedir 500m/1Gi (o mesmo que o kaniko-build-push, uma
+      # carga bem mais pesada) contribuiu para `ExceededNodeResources` numa
+      # execução real (2026-09-22). Limits mais folgados absorvem o pico
+      # real de `npm ci`/`vitest run` sem reservar isso à toa quando ocioso.
       computeResources:
         requests:
-          cpu: "500m"
-          memory: "1Gi"
+          cpu: "150m"
+          memory: "512Mi"
         limits:
           cpu: "2"
           memory: "2Gi"
