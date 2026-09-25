@@ -6,11 +6,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
+COPY pyproject.toml constraints.txt ./
 COPY src ./src
 COPY docker-entrypoint.sh ./
 
-RUN pip install --no-cache-dir . \
+# `-c constraints.txt` fixa a versão de CADA pacote (runtime e transitivos) —
+# sem ele a imagem resolvia as versões mais novas a cada build (ver o cabeçalho
+# de constraints.txt). Só o backend de build do pip (hatchling, em ambiente
+# isolado) continua sem trava: ele só empacota o próprio código.
+RUN pip install --no-cache-dir -c constraints.txt . \
     && chmod +x docker-entrypoint.sh \
     && useradd --create-home --uid 1000 appuser \
     && mkdir -p /app/uploads \

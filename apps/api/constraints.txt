@@ -1,0 +1,66 @@
+# Versões TRAVADAS do apps/api (runtime + ferramentas de dev). NÃO editar à mão.
+#
+# Por quê: pyproject.toml só declara limites inferiores (>=), então CI e imagem
+# de produção resolviam as versões mais novas a cada build — em 2026-09-25 isso
+# trouxe SQLAlchemy 2.1.1 (nunca testada) e quebrou o mypy. Com este arquivo o
+# build é reproduzível: mesma versão de cada pacote no CI, na imagem e no dev.
+#
+# Como é usado: `pip install -c constraints.txt ...` (Dockerfile, Task
+# `python-test` do Tekton, README do apps/api). `-c` só FIXA versões; quem diz o
+# que instalar continua sendo o pyproject.toml.
+#
+# Linux only: inclui pacotes de plataforma do `uvicorn[standard]` (uvloop,
+# httptools, watchfiles). Gerado em Linux (Docker/CI/WSL), Python 3.12.
+#
+# Origem (2026-09-25): o runtime é exatamente o que rodava em produção
+# (`pip freeze` do pod); as ferramentas de dev foram resolvidas respeitando isso.
+#
+# Regenerar/atualizar de propósito: ./regenerar-constraints.sh (roda a suíte).
+PyJWT==2.15.0
+PyYAML==6.0.3
+Pygments==2.21.0
+SQLAlchemy==2.0.54
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.15.1
+ast_serialize==0.11.2
+asyncpg==0.31.0
+bcrypt==5.0.0
+certifi==2026.7.22
+click==8.5.0
+coverage==7.16.1
+dnspython==2.8.0
+email-validator==2.3.0
+fastapi==0.141.1
+greenlet==3.5.6
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.20
+iniconfig==2.3.0
+librt==0.15.0
+mypy==2.3.1
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+prometheus-fastapi-instrumentator==8.1.0
+prometheus_client==0.26.0
+pydantic-settings==2.15.0
+pydantic==2.13.5
+pydantic_core==2.46.5
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest==9.1.1
+python-dotenv==1.2.3
+python-multipart==0.0.32
+ruff==0.16.9
+starlette==1.7.0
+structlog==26.1.0
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.54.0
+uvloop==0.22.1
+watchfiles==1.3.0
+websockets==17.1

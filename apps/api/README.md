@@ -37,12 +37,31 @@ Sem Docker (Postgres já rodando localmente):
 
 ```bash
 cd apps/api
-python -m venv .venv && source .venv/bin/activate   # ou .venv\Scripts\activate no Windows
-pip install -e ".[dev]"
+python -m venv .venv && source .venv/bin/activate   # Linux/WSL (ver nota sobre Windows abaixo)
+pip install -c constraints.txt -e ".[dev]"
 cp .env.example .env
 python -m amactive.scripts.apply_migrations   # aplica migrations/*.up.sql (roda a partir da raiz do repo)
 uvicorn amactive.main:app --reload
 ```
+
+### Dependências travadas (`constraints.txt`)
+
+O `pyproject.toml` só declara limites inferiores (`>=`); quem fixa a versão
+exata de cada pacote (runtime, transitivos e ferramentas de dev) é o
+[`constraints.txt`](constraints.txt), usado pelo `Dockerfile`, pela Task
+`python-test` do Tekton e pelo comando acima — o mesmo conjunto no CI, na
+imagem de produção e no seu ambiente. Foi gerado a partir do que rodava em
+produção em 2026-09-25.
+
+- **Adicionou/alterou uma dependência no `pyproject.toml`?** Rode
+  `./regenerar-constraints.sh` (Linux/WSL) e commite o `constraints.txt`. Um
+  teste (`tests/unit/test_constraints_cobre_pyproject.py`) falha se alguma
+  dependência declarada não estiver travada.
+- **Quer atualizar as versões de propósito?** O mesmo script, que sobe tudo para
+  o mais novo permitido pelo `pyproject.toml`, roda a suíte completa e mostra o
+  que mudou — revise o diff antes de commitar.
+- **Windows nativo:** o arquivo inclui pacotes só de Linux (`uvloop`,
+  `httptools`, `watchfiles` do `uvicorn[standard]`); use WSL ou Docker.
 
 ## Testes
 
