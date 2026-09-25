@@ -102,8 +102,11 @@ spec:
         echo ">>> python version"
         python --version
 
-        echo ">>> pip install -e .[dev]"
-        pip install --quiet --editable ".[dev]"
+        echo ">>> pip install -c constraints.txt -e .[dev]"
+        # Mesmas versões da imagem de produção e do desenvolvimento local
+        # (apps/api/constraints.txt) — sem isso o CI resolvia as mais novas a
+        # cada execução e quebrou com SQLAlchemy 2.1.1 (2026-09-25).
+        pip install --quiet -c constraints.txt --editable ".[dev]"
 
         echo ">>> ruff check ."
         ruff check .
