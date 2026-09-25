@@ -6,7 +6,12 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
-    "sqlalchemy[asyncio]>=2.0",
+    # `<2.1` de propósito: nada aqui é travado por lockfile, então CI e a
+    # imagem de produção resolvem as versões mais novas a cada build. Em
+    # 2026-09-25 isso trouxe SQLAlchemy 2.1.1 (todo o código e os testes de
+    # integração foram validados na 2.0.x) e quebrou o mypy do CI. Subir para
+    # 2.1 é uma migração a fazer de propósito, com a suíte de integração.
+    "sqlalchemy[asyncio]>=2.0,<2.1",
     "asyncpg>=0.29",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
