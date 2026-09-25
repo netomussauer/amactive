@@ -45,14 +45,16 @@ spec:
     - name: image-tag
       type: string
       default: "latest"
-    # URL pública da API embutida no bundle JS em BUILD TIME (Vite não lê
-    # env vars em runtime — ver apps/web/Dockerfile). Default aponta para o
-    # DNS ainda não registrado (ver infra/README.md) — sobrescrever aqui
-    # assim que api.amactive.local estiver resolvendo de verdade, ou apontar
-    # para o IP do LoadBalancer (infra/k8s/api/service.yaml) enquanto isso.
+    # URL da API embutida no bundle JS em BUILD TIME (Vite não lê env vars
+    # em runtime — ver apps/web/Dockerfile). "/api" é RELATIVO à origem de
+    # quem abriu o app: o nginx do próprio web (apps/web/nginx.conf) repassa
+    # `/api/` para o Service da API dentro do cluster. Assim o mesmo bundle
+    # funciona pela LAN (http://192.168.1.213) e pelo endereço público
+    # (Cloudflare Tunnel), sem CORS e sem depender de DNS `api.amactive.local`
+    # nem do IP do LoadBalancer da API. Antes: "http://api.amactive.local:8000".
     - name: vite-api-url
       type: string
-      default: "http://api.amactive.local:8000"
+      default: "/api"
   results:
     - name: image-digest
       description: Digest sha256 da imagem publicada.
