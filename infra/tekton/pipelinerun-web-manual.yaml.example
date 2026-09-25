@@ -23,8 +23,8 @@ spec:
   pipelineRef:
     name: amactive-build-web
   timeouts:
-    pipeline: 30m
-    tasks: 25m
+    pipeline: 50m
+    tasks: 40m
   taskRunTemplate:
     serviceAccountName: tekton-amactive
     podTemplate:

@@ -196,9 +196,14 @@ spec:
       spec:
         pipelineRef:
           name: amactive-build-web
+        # Maiores que os da API (30m/20m) de propósito: o pipeline do web
+        # tem o estágio `node-test` (~5min, eslint+vitest) ANTES do
+        # `kaniko-build-push` (npm ci + vite build, 10-16min, com 1 retry) —
+        # 20m de orçamento total de tasks estourava mesmo com o nó livre
+        # (visto em 2026-09-25: PipelineRunTimeout num build isolado).
         timeouts:
-          pipeline: "30m"
-          tasks: "20m"
+          pipeline: "50m"
+          tasks: "40m"
         taskRunTemplate:
           serviceAccountName: tekton-amactive
           podTemplate:
