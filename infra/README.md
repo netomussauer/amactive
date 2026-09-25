@@ -297,6 +297,108 @@ conferir `kubectl logs -n metallb-system speaker-*` e o passo 5 (NetBox).
 documentado pelo realtpmsys neste cluster — usar o `dnsConfig` de
 `tekton/pipelinerun-web-manual.yaml.example` ao disparar manualmente.
 
+## Acesso público ao sistema (web + API) com Cloudflare Access
+
+**Arquitetura:** Internet → Cloudflare (TLS/WAF + **Access**) → `cloudflared`
+(ns `edge`) → ingress-nginx interno → Ingress
+[`web/ingress-public.yaml`](k8s/web/ingress-public.yaml) → Service `amactive-web`
+→ nginx do web, que serve a SPA em `/` e repassa `/api/` para a API dentro do
+cluster ([`apps/web/nginx.conf`](../apps/web/nginx.conf)). **Um único
+hostname** — `amactive.amtech.app.br` — de propósito: o Access protege por
+hostname e o navegador precisa do cookie dele em toda chamada; com a API em
+outro hostname cada chamada XHR seria bloqueada. Mesma origem também elimina
+CORS. O bundle chama a API em `/api` (`VITE_API_URL=/api`), então o mesmo
+build funciona pela LAN (`http://192.168.1.213`) e pelo endereço público.
+
+**Exceção consciente ao ADR-013 do `infra-lab`** ("nunca a aplicação inteira
+nem painéis administrativos"): aqui o sistema inteiro fica alcançável pela
+internet, por decisão do dono do projeto (acesso remoto da equipe). A
+mitigação é a identidade do Cloudflare Access na frente. Sugere-se registrar
+esta exceção no ADR-013 do `infra-lab` (repositório à parte).
+
+**O que fica exposto por `/api/`** — lista de PERMISSÃO no nginx: `auth`,
+`usuarios`, `categorias`, `produtos`, `variantes`, `estoque`, `pedidos`,
+`clientes`, `fornecedores`, `dashboard`, `relatorios` e `media`. Tudo o mais
+(`/docs`, `/redoc`, `/openapi.json`, `/metrics`, `/health`, o webhook da
+Nuvemshop e qualquer rota nova) responde 404 do nginx. **Ao criar um router
+novo na API, acrescentar o prefixo em `apps/web/nginx.conf`**, senão a tela
+correspondente recebe 404.
+
+### Ativar (nesta ordem — o Access vem ANTES do Ingress)
+
+> **Os menus da Cloudflare mudam com frequência.** Os caminhos abaixo foram
+> conferidos na documentação oficial em 2026-09-25 (fontes no fim desta
+> seção). Se a tela divergir, valha a documentação atual, não este texto.
+
+1. **Login por e-mail (pré-requisito).** *Zero Trust → Integrations →
+   Identity providers → Add new identity provider → One-time PIN.*
+   O PIN **não vem mais ativado por padrão**: organizações novas usam só o
+   provedor "Cloudflare" (login com conta Cloudflare). Sem o PIN, colegas sem
+   conta Cloudflare não conseguem entrar. Com ele, a pessoa digita o e-mail
+   ("Send login code") e recebe um código de uso único, válido por 10 min.
+2. **Política de acesso.** *Zero Trust → Access controls → Policies → Add a
+   policy.* Campos: **Policy name** (ex.: `AMACTIVE - equipe`), **Action**:
+   `Allow`, **Rules** → *Include* → seletor **Emails** → um e-mail por linha
+   (ou **Emails ending in** para liberar um domínio inteiro), e
+   **Session duration** (obrigatório e definido na política; ex.: 24h).
+   Uma aplicação sem nenhuma política **nega todo mundo**.
+3. **Aplicação.** *Zero Trust → Access controls → Applications → Create new
+   application → Self-hosted and private → Add public hostname.* Hostname:
+   `amactive.amtech.app.br` (subdomínio `amactive`, domínio `amtech.app.br` no
+   seletor **Domain**, **sem path** — cobre o site inteiro). Em *Access
+   policies*, adicione a política do passo 2 (existente ou crie ali mesmo) e,
+   em *identity providers*, marque **One-time PIN**. Finalize com **Create**.
+   (A documentação oficial não detalha os rótulos exatos dos campos
+   subdomínio/path; se a tela pedir de outro jeito, o que importa é o
+   hostname completo `amactive.amtech.app.br` sem restrição de caminho.)
+4. **Web Analytics (opcional, cosmético).** O Web Analytics é injetado
+   automaticamente em sites proxiados pela Cloudflare. Se estiver ligado para
+   este hostname, o script dele é **bloqueado pela CSP do nginx** — só gera
+   um erro no console, o sistema funciona igual. Para silenciar: *Cloudflare
+   dashboard → Web Analytics → (o site) → Manage Site → Disable*. A doc não
+   diz se isso vale para hostnames servidos via Tunnel; não é bloqueante.
+5. **Prove que o Access está ativo antes de aplicar o Ingress:**
+   `curl -sSI https://amactive.amtech.app.br/` deve responder `302` com
+   `location:` para `*.cloudflareaccess.com/cdn-cgi/access/login/...`. Um
+   `404` aqui significa que o Access **não** está protegendo o hostname (a
+   resposta veio do ingress-nginx, que ainda não tem rota). Se não
+   redirecionar, NÃO aplique o Ingress.
+6. Commitar/dar push de `infra/k8s/web/ingress-public.yaml` (o ArgoCD aplica).
+7. **Prove que sem credencial nada do AMACTIVE é servido:**
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://amactive.amtech.app.br/api/produtos   # 302 (nunca 200/401 do AMACTIVE)
+   curl -s https://amactive.amtech.app.br/ | grep -c AMACTIVE                              # 0
+   ```
+
+8. Logar pelo navegador (tela do Access → e-mail → código → tela de login do
+   AMACTIVE) e conferir que as chamadas a `/api/*` funcionam (dashboard,
+   produtos, upload de foto).
+
+**Desativar:** remover `infra/k8s/web/ingress-public.yaml` e dar push (o ArgoCD
+faz o prune); o acesso pela LAN não é afetado.
+
+**Fontes dos menus da Cloudflare (conferidas em 2026-09-25):**
+[aplicação self-hosted](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/),
+[gerenciar políticas](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/policy-management/),
+[políticas (seletores)](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/),
+[One-time PIN](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/),
+[Web Analytics](https://developers.cloudflare.com/web-analytics/get-started/).
+
+### Riscos aceitos / pendências
+
+- Os LoadBalancers da LAN (`192.168.1.212` API, `192.168.1.213` web) **não
+  passam pelo Access** e o ns `amactive` não tem NetworkPolicy — a LAN é
+  tratada como confiável (e o acesso pela LAN tem de continuar funcionando sem
+  Cloudflare). O da API expõe `/docs`, `/metrics` e o webhook.
+- Login sem lockout/rate limit por e-mail (só o tempo de resposta foi
+  igualado, para não enumerar e-mails). Com o Access na frente só quem já está
+  autorizado chega ao formulário; se o Access for removido, revisar isto antes.
+- JWT de 8h em `localStorage`, sem revogação (mitigado pela CSP).
+- O IP de origem visto pelo ingress-nginx atrás do túnel é forjável
+  (`use-forwarded-headers` do edge, ver "Integração Nuvemshop") — por isso não
+  há rate limit por IP no Ingress; o controle de acesso é o Access.
+
 ## Integração Nuvemshop — EM ESPERA (exposição pública e ativação)
 
 **Status: em espera.** Criar o app privado na Nuvemshop exige o plano Escala

@@ -1,0 +1,60 @@
+# Acesso PÚBLICO ao sistema AMACTIVE (web + API) por UM hostname:
+#   Internet -> Cloudflare (DNS/TLS/WAF + CLOUDFLARE ACCESS) -> cloudflared
+#   (ns edge, túnel outbound) -> ingress-nginx interno (ClusterIP) -> este
+#   Ingress -> Service amactive-web -> nginx do web, que serve a SPA em `/`
+#   e repassa `/api/` para a API dentro do cluster (apps/web/nginx.conf).
+#
+# ATENÇÃO — exceção consciente ao ADR-013 do infra-lab, que prevê expor só
+# "rotas de integração, nunca a aplicação inteira nem painéis
+# administrativos". Aqui a aplicação inteira fica alcançável pela internet,
+# por decisão do dono do projeto (acesso remoto da equipe). A mitigação é a
+# camada de identidade do Cloudflare Access NA FRENTE do hostname: sem uma
+# política do Access ativa para amactive.amtech.app.br, este Ingress deixa a
+# tela de login do AMACTIVE aberta a qualquer pessoa da internet — CRIE A
+# POLÍTICA ANTES de aplicar este arquivo (ver infra/README.md, seção
+# "Acesso público ao sistema").
+#
+# Um único hostname (e não web + api separados) de propósito: o Access
+# protege por hostname e o navegador precisa do cookie dele em toda chamada;
+# com a API num segundo hostname cada chamada XHR seria bloqueada/redirecionada.
+# Mesma origem também elimina CORS.
+#
+# `/api/docs`, `/api/redoc`, `/api/openapi.json`, `/api/metrics` e
+# `/api/integracoes/*` (webhook da Nuvemshop) respondem 404 no nginx do web —
+# ver apps/web/nginx.conf. O webhook, se a integração for reativada, ganha
+# um Ingress dedicado com `pathType: Exact` (histórico: commit 3f07544).
+#
+# Sem `limit-rps` aqui: o SPA carrega dezenas de assets por visita e o IP
+# "real" visto pelo ingress-nginx atrás do túnel não é confiável (ver a
+# revisão de segurança do webhook) — um limite por IP tenderia a bloquear
+# usuários legítimos sem deter um atacante. O controle de acesso é o Access.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: amactive-web-public
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-web"
+    app.kubernetes.io/component: "public-ingress"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+  annotations:
+    # Upload de fotos de produto (multipart) passa por /api/produtos/*/imagens;
+    # o padrão do ingress-nginx (1m) rejeitaria fotos comuns. Mesmo teto do
+    # `client_max_body_size` do nginx do web.
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "amactive.amtech.app.br"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: amactive-web
+                port:
+                  number: 80
