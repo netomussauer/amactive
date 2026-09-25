@@ -29,10 +29,11 @@ COPY . .
 
 # VITE_API_URL é embutida no bundle JS em BUILD TIME pelo Vite (import.meta.env)
 # — não é uma env var de runtime como seria em um servidor Node/Next.js.
-# Precisa ser passada como --build-arg no `docker build` / Kaniko (ver
-# infra/tekton/pipeline-web.yaml) apontando para a URL pública real da API
-# quando essa URL for definida/registrada no DNS do lab.
-ARG VITE_API_URL=http://api.amactive.local:8000
+# O pipeline (infra/tekton/pipeline-web.yaml) a passa como --build-arg para o
+# Kaniko. "/api" é RELATIVO à origem do navegador: o nginx deste mesmo
+# container (nginx.conf, `location ^~ /api/`) repassa para a API dentro do
+# cluster — mesmo bundle serve a LAN e o endereço público, sem CORS.
+ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build
