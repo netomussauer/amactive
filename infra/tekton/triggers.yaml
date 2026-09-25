@@ -304,8 +304,15 @@ spec:
   template:
     ref: amactive-build-api-template
 ---
-# amactive-gitea-push-web: mesma ideia, filtro de apps/web/** e
-# infra/k8s/web/**.
+# amactive-gitea-push-web: só cria o PipelineRun do web se o push tocou
+# apps/web/** (código, nginx.conf, Dockerfile — tudo o que entra na imagem).
+# `infra/k8s/web/**` (Deployment/Service/Ingress) NÃO dispara: são manifests
+# que o ArgoCD aplica sozinho, sem precisar de imagem nova — buildar por
+# causa deles seria refazer uma imagem idêntica (mesma lógica de
+# `infra/tekton/**`, ver nota no cabeçalho). Diferente de `infra/k8s/api/**`
+# no filtro da API, que fica de propósito: o ConfigMap de migrations mora
+# lá e só é aplicado quando o pod da API reinicia (rollout-restart do
+# pipeline).
 apiVersion: triggers.tekton.dev/v1beta1
 kind: Trigger
 metadata:
@@ -341,7 +348,7 @@ spec:
           value: >-
             body.ref == 'refs/heads/main' && body.head_commit.id != '' &&
             body.commits.exists(c, (c.added + c.modified + c.removed).exists(f,
-              f.startsWith('apps/web/') || f.startsWith('infra/k8s/web/')
+              f.startsWith('apps/web/')
             ))
         - name: overlays
           value:
