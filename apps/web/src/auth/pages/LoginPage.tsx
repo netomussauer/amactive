@@ -47,7 +47,11 @@ export function LoginPage() {
         <img
           src="/brand/amactive-logo-white.png"
           alt="AMACTIVE"
-          className="relative z-10 h-10 w-auto"
+          // self-start: o painel é flex-col sem align-items explícito
+          // (default stretch) — sem isso a imagem era esticada para a
+          // largura inteira do painel enquanto a altura ficava fixa em
+          // h-10, distorcendo a proporção do logotipo.
+          className="relative z-10 h-10 w-auto self-start"
         />
         <div className="relative z-10 max-w-sm">
           <Sparkles className="mb-4 h-8 w-8 text-blue-400" aria-hidden="true" />
