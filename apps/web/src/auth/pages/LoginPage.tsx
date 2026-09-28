@@ -49,9 +49,11 @@ export function LoginPage() {
           alt="AMACTIVE"
           // self-start: o painel é flex-col sem align-items explícito
           // (default stretch) — sem isso a imagem era esticada para a
-          // largura inteira do painel enquanto a altura ficava fixa em
-          // h-10, distorcendo a proporção do logotipo.
-          className="relative z-10 h-10 w-auto self-start"
+          // largura inteira do painel, distorcendo a proporção do
+          // logotipo. h-16 (não h-10): o lockup é bem mais largo que
+          // alto (~1.98:1), então numa altura menor ele ficava correto
+          // mas minúsculo dentro do painel de tela cheia.
+          className="relative z-10 h-16 w-auto self-start"
         />
         <div className="relative z-10 max-w-sm">
           <Sparkles className="mb-4 h-8 w-8 text-blue-400" aria-hidden="true" />
@@ -70,7 +72,7 @@ export function LoginPage() {
           <img
             src="/brand/amactive-logo-primary.png"
             alt="AMACTIVE"
-            className="h-9 w-auto lg:hidden"
+            className="h-11 w-auto lg:hidden"
           />
           <h1 className="mt-2 font-sans text-2xl font-bold text-text">Entrar</h1>
           <p className="mt-1 text-sm text-text-muted">Acesse o painel de estoque e vendas.</p>
