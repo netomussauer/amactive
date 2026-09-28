@@ -43,10 +43,14 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen">
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-graphite-900 p-12 text-white lg:flex">
-        <div className="absolute inset-0 bg-gradient-to-br from-coral-600 via-graphite-900 to-graphite-900" />
-        <div className="relative z-10 font-sans text-2xl font-bold tracking-tight">AMACTIVE</div>
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-700 via-graphite-900 to-graphite-900" />
+        <img
+          src="/brand/amactive-logo-white.png"
+          alt="AMACTIVE"
+          className="relative z-10 h-10 w-auto"
+        />
         <div className="relative z-10 max-w-sm">
-          <Sparkles className="mb-4 h-8 w-8 text-coral-400" aria-hidden="true" />
+          <Sparkles className="mb-4 h-8 w-8 text-blue-400" aria-hidden="true" />
           <h2 className="font-sans text-3xl font-bold leading-tight">
             Moda fitness feminina, controle total do balcão ao estoque.
           </h2>
@@ -59,7 +63,11 @@ export function LoginPage() {
 
       <div className="flex w-full flex-1 items-center justify-center bg-bg px-6 py-12 lg:w-1/2">
         <div className="w-full max-w-sm">
-          <h1 className="font-sans text-2xl font-bold text-text lg:hidden">AMACTIVE</h1>
+          <img
+            src="/brand/amactive-logo-primary.png"
+            alt="AMACTIVE"
+            className="h-9 w-auto lg:hidden"
+          />
           <h1 className="mt-2 font-sans text-2xl font-bold text-text">Entrar</h1>
           <p className="mt-1 text-sm text-text-muted">Acesse o painel de estoque e vendas.</p>
 

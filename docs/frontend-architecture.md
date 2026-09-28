@@ -412,18 +412,29 @@ Sem Core Web Vitals de SEO a otimizar (SPA interna, sem crawler), mas os princí
 
 ## 7. Design Tokens — Identidade Visual AMACTIVE
 
-Marca de moda fitness feminina: tom **enérgico, confiante e clean**. Paleta com uma cor de assinatura vibrante (coral/rosa queimado) equilibrada por neutros (preto/grafite/branco) típicos de moda fitness — evita rosa "infantilizado", buscando um visual premium/atlético.
+Marca de moda fitness feminina: tom **enérgico, confiante e clean**. Paleta
+derivada do logotipo oficial (`apps/web/public/brand/`) — um azul de
+assinatura (mesma matiz do fundo do logo, H≈215°) equilibrado por neutros
+(preto/grafite/branco) típicos de moda fitness, buscando um visual
+premium/atlético. Até uma revisão de identidade em 2026-09-28 a cor de
+assinatura era um coral/rosa queimado; substituída para acompanhar o
+logotipo — `--color-primary` usa o `600`, não o `500`: o `500` tem contraste
+3.81:1 contra branco (abaixo do mínimo WCAG AA de 4.5:1 para texto), o `600`
+(5.33:1) é o tom mais claro da escala que ainda passa.
 
 ```css
 /* styles/tokens.css */
 
 :root {
   /* ── Primitivos ─────────────────────────────────────────── */
-  --color-coral-50:   #fff1ee;
-  --color-coral-400:  #ff8a70;
-  --color-coral-500:  #ff6b4a;   /* cor de assinatura AMACTIVE */
-  --color-coral-600:  #e6502f;
-  --color-coral-700:  #c23f22;
+  --color-blue-50:  #f4f7fb;
+  --color-blue-100: #e0e9f5;
+  --color-blue-200: #bdd1ec;   /* == fundo do logotipo */
+  --color-blue-400: #7aa6e1;
+  --color-blue-500: #4183dc;
+  --color-blue-600: #2169ca;   /* cor de assinatura AMACTIVE */
+  --color-blue-700: #1a529e;
+  --color-blue-900: #122a4a;
 
   --color-graphite-50:  #f7f7f8;
   --color-graphite-200: #e2e2e6;
@@ -464,9 +475,9 @@ Marca de moda fitness feminina: tom **enérgico, confiante e clean**. Paleta com
 
 /* ── Semânticos (tema claro — único tema no MVP; dark theme é evolução futura) ── */
 :root {
-  --color-primary:        var(--color-coral-500);
-  --color-primary-hover:  var(--color-coral-600);
-  --color-primary-subtle: var(--color-coral-50);
+  --color-primary:        var(--color-blue-600);
+  --color-primary-hover:  var(--color-blue-700);
+  --color-primary-subtle: var(--color-blue-50);
 
   --color-danger:         var(--color-red-500);
   --color-success:        var(--color-green-500);

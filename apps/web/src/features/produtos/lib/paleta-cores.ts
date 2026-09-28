@@ -19,7 +19,7 @@ export const PALETA_CORES_PADRAO: CorPaleta[] = [
   { nome: 'Bege', hex: '#d8c3a5' },
   { nome: 'Rosa', hex: '#f472b6' },
   { nome: 'Rosa Bebê', hex: '#fbcfe8' },
-  { nome: 'Coral', hex: '#ff6b4a' }, // = --color-coral-500 (styles/tokens.css) — cor de assinatura AMACTIVE
+  { nome: 'Coral', hex: '#ff6b4a' }, // cor de produto — sem relação com a paleta da marca (styles/tokens.css)
   { nome: 'Vermelho', hex: '#dc2626' },
   { nome: 'Vinho', hex: '#6d1f2b' },
   { nome: 'Roxo', hex: '#7c3aed' },

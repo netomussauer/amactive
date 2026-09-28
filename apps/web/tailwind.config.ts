@@ -21,12 +21,15 @@ const config: Config = {
         // Primitivos expostos para casos que precisam de um degrade dentro da
         // própria paleta da marca (ex: hover states, ícones secundários) —
         // sempre via token, nunca hex literal nas classes.
-        coral: {
-          50: 'var(--color-coral-50)',
-          400: 'var(--color-coral-400)',
-          500: 'var(--color-coral-500)',
-          600: 'var(--color-coral-600)',
-          700: 'var(--color-coral-700)',
+        blue: {
+          50: 'var(--color-blue-50)',
+          100: 'var(--color-blue-100)',
+          200: 'var(--color-blue-200)',
+          400: 'var(--color-blue-400)',
+          500: 'var(--color-blue-500)',
+          600: 'var(--color-blue-600)',
+          700: 'var(--color-blue-700)',
+          900: 'var(--color-blue-900)',
         },
         graphite: {
           50: 'var(--color-graphite-50)',

@@ -24,7 +24,7 @@ describe('paleta-cores', () => {
       expect(isCorClara('#0a0a0a')).toBe(false)
     })
 
-    it('identifica o coral de assinatura como cor escura o suficiente para ícone branco', () => {
+    it('identifica o coral (cor de produto) como escuro o suficiente para ícone branco', () => {
       expect(isCorClara('#ff6b4a')).toBe(false)
     })
   })

@@ -59,7 +59,10 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: Props) {
         )}
       >
         <div className="flex h-16 items-center justify-between border-b border-border px-6">
-          <span className="font-sans text-xl font-bold tracking-tight text-primary">AMACTIVE</span>
+          <span className="flex items-center gap-2">
+            <img src="/brand/amactive-icon-primary.png" alt="" className="h-7 w-auto" aria-hidden="true" />
+            <span className="font-sans text-xl font-bold tracking-tight text-primary">AMACTIVE</span>
+          </span>
           <button
             type="button"
             aria-label="Fechar menu"
