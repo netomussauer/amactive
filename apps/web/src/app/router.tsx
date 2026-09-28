@@ -1,69 +1,70 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import { createBrowserRouter } from 'react-router-dom'
 import { AuthGuard } from './AuthGuard'
 import { RoleGuard } from './RoleGuard'
 import { RootRedirect } from './RootRedirect'
 import { AuthLayout } from '@/shared/components/layout/AuthLayout'
 import { Spinner } from '@/shared/components/ui/Spinner'
+import { lazyWithReload } from '@/shared/lib/lazy-with-reload'
 import { routes } from '@/shared/lib/routes'
 import type { Permissoes } from '@/shared/lib/permissoes'
 
 // Code splitting por rota — cada página de feature só entra no bundle quando
 // a rota é visitada. Ver docs/frontend-architecture.md §6.
-const LoginPage = lazy(() => import('@/auth/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
-const DashboardPage = lazy(() =>
+const LoginPage = lazyWithReload(() => import('@/auth/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
+const DashboardPage = lazyWithReload(() =>
   import('@/features/dashboard/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
 )
-const ProdutosListPage = lazy(() =>
+const ProdutosListPage = lazyWithReload(() =>
   import('@/features/produtos/pages/ProdutosListPage').then((m) => ({ default: m.ProdutosListPage })),
 )
-const ProdutoNovoPage = lazy(() =>
+const ProdutoNovoPage = lazyWithReload(() =>
   import('@/features/produtos/pages/ProdutoNovoPage').then((m) => ({ default: m.ProdutoNovoPage })),
 )
-const ProdutoDetalhePage = lazy(() =>
+const ProdutoDetalhePage = lazyWithReload(() =>
   import('@/features/produtos/pages/ProdutoDetalhePage').then((m) => ({ default: m.ProdutoDetalhePage })),
 )
-const EstoquePage = lazy(() =>
+const EstoquePage = lazyWithReload(() =>
   import('@/features/estoque/pages/EstoquePage').then((m) => ({ default: m.EstoquePage })),
 )
-const MovimentacoesPage = lazy(() =>
+const MovimentacoesPage = lazyWithReload(() =>
   import('@/features/estoque/pages/MovimentacoesPage').then((m) => ({ default: m.MovimentacoesPage })),
 )
-const PdvPage = lazy(() => import('@/features/vendas/pages/PdvPage').then((m) => ({ default: m.PdvPage })))
-const PedidosListPage = lazy(() =>
+const PdvPage = lazyWithReload(() => import('@/features/vendas/pages/PdvPage').then((m) => ({ default: m.PdvPage })))
+const PedidosListPage = lazyWithReload(() =>
   import('@/features/vendas/pages/PedidosListPage').then((m) => ({ default: m.PedidosListPage })),
 )
-const PedidoDetalhePage = lazy(() =>
+const PedidoDetalhePage = lazyWithReload(() =>
   import('@/features/vendas/pages/PedidoDetalhePage').then((m) => ({ default: m.PedidoDetalhePage })),
 )
-const ClientesListPage = lazy(() =>
+const ClientesListPage = lazyWithReload(() =>
   import('@/features/clientes/pages/ClientesListPage').then((m) => ({ default: m.ClientesListPage })),
 )
-const ClienteNovoPage = lazy(() =>
+const ClienteNovoPage = lazyWithReload(() =>
   import('@/features/clientes/pages/ClienteNovoPage').then((m) => ({ default: m.ClienteNovoPage })),
 )
-const ClienteDetalhePage = lazy(() =>
+const ClienteDetalhePage = lazyWithReload(() =>
   import('@/features/clientes/pages/ClienteDetalhePage').then((m) => ({ default: m.ClienteDetalhePage })),
 )
-const FornecedoresListPage = lazy(() =>
+const FornecedoresListPage = lazyWithReload(() =>
   import('@/features/fornecedores/pages/FornecedoresListPage').then((m) => ({ default: m.FornecedoresListPage })),
 )
-const FornecedorNovoPage = lazy(() =>
+const FornecedorNovoPage = lazyWithReload(() =>
   import('@/features/fornecedores/pages/FornecedorNovoPage').then((m) => ({ default: m.FornecedorNovoPage })),
 )
-const FornecedorDetalhePage = lazy(() =>
+const FornecedorDetalhePage = lazyWithReload(() =>
   import('@/features/fornecedores/pages/FornecedorDetalhePage').then((m) => ({ default: m.FornecedorDetalhePage })),
 )
-const RelatoriosPage = lazy(() =>
+const RelatoriosPage = lazyWithReload(() =>
   import('@/features/relatorios/pages/RelatoriosPage').then((m) => ({ default: m.RelatoriosPage })),
 )
-const UsuariosListPage = lazy(() =>
+const UsuariosListPage = lazyWithReload(() =>
   import('@/features/usuarios/pages/UsuariosListPage').then((m) => ({ default: m.UsuariosListPage })),
 )
-const UsuarioNovoPage = lazy(() =>
+const UsuarioNovoPage = lazyWithReload(() =>
   import('@/features/usuarios/pages/UsuarioNovoPage').then((m) => ({ default: m.UsuarioNovoPage })),
 )
-const UsuarioDetalhePage = lazy(() =>
+const UsuarioDetalhePage = lazyWithReload(() =>
   import('@/features/usuarios/pages/UsuarioDetalhePage').then((m) => ({ default: m.UsuarioDetalhePage })),
 )
 

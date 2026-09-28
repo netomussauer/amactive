@@ -1,3 +1,4 @@
+import { ZodError } from 'zod'
 import { ApiError } from './api-client'
 
 // Traduz qualquer erro capturado (ApiError da API, erro de rede, etc.) em uma
@@ -14,6 +15,16 @@ export function getErrorMessage(error: unknown): string {
       return error.detail || 'Você não tem permissão para realizar esta ação.'
     }
     return error.detail || error.title || 'Ocorreu um erro inesperado.'
+  }
+  // ZodError.message é o JSON.stringify() bruto do array de issues (ver
+  // zod/src/ZodError.ts) — sem este caso cai no `error instanceof Error`
+  // abaixo e mostra esse JSON cru para o usuário (bug real, 2026-09-28:
+  // aconteceu quando um schema de resposta divergiu do formato real da API).
+  // Um ZodError chegando até aqui sempre indica um schema desalinhado, não
+  // algo que o usuário possa corrigir — nunca é acionável mostrar os
+  // detalhes técnicos.
+  if (error instanceof ZodError) {
+    return 'Ocorreu um erro inesperado ao processar a resposta do servidor.'
   }
   if (error instanceof Error) {
     if (error.message === 'Failed to fetch') {

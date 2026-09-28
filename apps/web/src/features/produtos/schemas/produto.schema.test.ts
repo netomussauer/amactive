@@ -58,9 +58,15 @@ describe('ProdutoResponseSchema — desconto_percentual', () => {
     expect(result.success).toBe(true)
   })
 
-  it('aceita resposta com desconto_percentual numérico', () => {
-    const result = ProdutoResponseSchema.safeParse({ ...produtoBase, desconto_percentual: 20 })
+  it('aceita desconto_percentual como STRING — formato real da API (Decimal serializado pelo Pydantic v2, não number)', () => {
+    const result = ProdutoResponseSchema.safeParse({ ...produtoBase, desconto_percentual: '20.00' })
     expect(result.success).toBe(true)
+    if (result.success) expect(result.data.desconto_percentual).toBe('20.00')
+  })
+
+  it('regressão: rejeita desconto_percentual como number (bug 2026-09-28 — o schema aceitava isso, a API nunca envia)', () => {
+    const result = ProdutoResponseSchema.safeParse({ ...produtoBase, desconto_percentual: 20 })
+    expect(result.success).toBe(false)
   })
 })
 

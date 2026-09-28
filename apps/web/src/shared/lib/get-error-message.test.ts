@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { getErrorMessage } from './get-error-message'
 import { ApiError } from './api-client'
 
@@ -34,5 +35,17 @@ describe('getErrorMessage', () => {
 
   it('tem um fallback para valores desconhecidos', () => {
     expect(getErrorMessage('string qualquer')).toBe('Ocorreu um erro inesperado.')
+  })
+
+  it('nunca vaza o JSON bruto de um ZodError (bug real, 2026-09-28)', () => {
+    // ZodError.message É o JSON.stringify() do array de issues — cair no
+    // ramo genérico `error instanceof Error` mostraria esse JSON cru para
+    // o usuário, como aconteceu quando um schema de resposta divergiu do
+    // formato real da API (produto.schema.ts, desconto_percentual).
+    const { error } = z.object({ x: z.number() }).safeParse({ x: 'não é número' })
+    const mensagem = getErrorMessage(error)
+    expect(mensagem).not.toContain('invalid_type')
+    expect(mensagem).not.toContain('{')
+    expect(mensagem).toBe('Ocorreu um erro inesperado ao processar a resposta do servidor.')
   })
 })

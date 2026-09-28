@@ -82,7 +82,13 @@ export function ProdutoDetalhePage() {
                 descricao: produto.descricao ?? '',
                 categoria_id: produto.categoria_id ?? null,
                 marca: produto.marca,
-                desconto_percentual: produto.desconto_percentual ?? null,
+                // API/ProdutoResponseSchema trazem string ("10.00"); o
+                // formulário (CriarProdutoSchema) espera number — mesma
+                // conversão que o próprio <input type="number"> faria ao
+                // digitar o valor (ver setValueAs em ProdutoForm).
+                desconto_percentual: produto.desconto_percentual
+                  ? Number(produto.desconto_percentual)
+                  : null,
               }}
               isSubmitting={isUpdating}
               submitLabel="Salvar alterações"

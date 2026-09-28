@@ -37,8 +37,15 @@ export const ProdutoResponseSchema = z.object({
   descricao: z.string().nullable().optional(),
   categoria_id: z.string().nullable().optional(),
   marca: z.string(),
-  // null = sem promoção ativa (ver docs/data-model.md decisão #14).
-  desconto_percentual: z.number().nullable().optional(),
+  // STRING, não number: o backend serializa Decimal como string ("10.00",
+  // Pydantic v2 — confirmado empiricamente, `Decimal.__str__` preserva
+  // precisão sem o arredondamento binário de float). Mesma convenção já
+  // usada em VarianteResponseSchema.desconto_percentual (MoneyStr) abaixo
+  // — aqui estava como z.number() por engano: qualquer produto com desconto
+  // ativo (valor não nulo) fazia o .parse() da resposta falhar com
+  // "Expected number, received string" (bug real, 2026-09-28). null = sem
+  // promoção ativa (ver docs/data-model.md decisão #14).
+  desconto_percentual: z.string().nullable().optional(),
   ativo: z.boolean(),
   criado_em: z.string(),
 })
