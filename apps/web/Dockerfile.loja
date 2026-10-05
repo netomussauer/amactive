@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1.7
+#
+# Dockerfile da VITRINE (loja online pública) — mesma base do Dockerfile do
+# sistema administrativo, com build `npm run build:loja` e nginx próprio
+# (nginx.loja.conf: allow-list mínima de /api/).
+#
+# Stages:
+#   1. build   — node:20-alpine, `npm ci` + `npm run build:loja` -> dist-loja/
+#   2. runtime — nginx-unprivileged, sem a configuração do admin.
+#
+# VITE_API_URL=/api e VITE_WHATSAPP_LOJA vêm de apps/web/.env.loja (commitado),
+# embutidos no bundle em build time. Nada de segredo aqui.
+
+# ─── 1. Build ────────────────────────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+RUN npm run build:loja
+
+# ─── 2. Runtime ──────────────────────────────────────────────────────────
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+
+COPY --chown=101:101 nginx.loja.conf /etc/nginx/conf.d/default.conf
+COPY --chown=101:101 --from=build /app/dist-loja /usr/share/nginx/html
+
+EXPOSE 8080
+
+USER 101
+
+CMD ["nginx", "-g", "daemon off;"]

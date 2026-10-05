@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/ui/Button'
 import { Skeleton } from '@/shared/components/ui/Skeleton'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { PrecoPromocional } from '@/shared/components/ui/PrecoPromocional'
+import { getMediaUrl } from '@/shared/lib/api-client'
 import { toast } from '@/shared/lib/toast'
 import { useProdutoLoja } from '../hooks/useLojaQueries'
 import { useCarrinhoStore, LIMITE_QUANTIDADE_POR_ITEM } from '../store/carrinho.store'
@@ -99,7 +100,11 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
       <div className="flex flex-col gap-3">
         <div className="aspect-[3/4] overflow-hidden rounded-lg bg-bg-subtle">
           {imagemAtual ? (
-            <img src={imagemAtual.url} alt={`${produto.nome} — ${cor}`} className="h-full w-full object-cover" />
+            <img
+              src={getMediaUrl(imagemAtual.url)}
+              alt={`${produto.nome} — ${cor}`}
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-text-muted">Sem imagem</div>
           )}
@@ -115,7 +120,7 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
                 aria-label={`Ver imagem ${i + 1}`}
                 className={`h-16 w-12 shrink-0 overflow-hidden rounded border ${i === indiceImagem ? 'border-primary' : 'border-border'}`}
               >
-                <img src={imagem.url} alt="" className="h-full w-full object-cover" />
+                <img src={getMediaUrl(imagem.url)} alt="" className="h-full w-full object-cover" />
               </button>
             ))}
           </div>

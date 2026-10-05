@@ -1,0 +1,30 @@
+# Service da VITRINE — ClusterIP de propósito, sem LoadBalancer.
+#
+# O ambiente de desenvolvimento não expõe a vitrine na rede do lab nem na
+# internet. Para testar, use port-forward:
+#   kubectl -n amactive port-forward svc/amactive-loja 8088:80
+#   e abra http://localhost:8088
+#
+# A exposição pública (loja.amactive.com.br, atrás da Cloudflare) é um item
+# separado, da fase de produção (ver docs/arquitetura-producao.md).
+apiVersion: v1
+kind: Service
+metadata:
+  name: amactive-loja
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-loja"
+    app.kubernetes.io/component: "storefront"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: "amactive-loja"
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

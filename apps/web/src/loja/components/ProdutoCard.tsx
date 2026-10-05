@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { Badge } from '@/shared/components/ui/Badge'
+import { getMediaUrl } from '@/shared/lib/api-client'
 import { formatCurrencyBRL, formatPercent } from '@/shared/lib/format'
 import type { ProdutoResumoLoja } from '../schemas/loja.schema'
 
@@ -16,7 +17,7 @@ export function ProdutoCard({ produto }: Props) {
       <div className="relative aspect-[3/4] bg-bg-subtle">
         {produto.imagem_principal_url ? (
           <img
-            src={produto.imagem_principal_url}
+            src={getMediaUrl(produto.imagem_principal_url)}
             alt={produto.nome}
             loading="lazy"
             className="h-full w-full object-cover transition-transform group-hover:scale-[1.02]"

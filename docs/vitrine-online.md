@@ -68,6 +68,22 @@ Administrativo (JWT, ADMIN/VENDEDOR):
 
 Preço e desconto são sempre recalculados no backend. O desconto promocional do produto (`desconto_percentual`) vira `desconto_item`. O cliente nunca envia valor.
 
+## 4.1 Deploy em desenvolvimento (lab)
+
+- **Imagem:** `harbor.lab.local/amactive/loja`, gerada por `apps/web/Dockerfile.loja` (build `npm run build:loja`, servido por nginx com `apps/web/nginx.loja.conf`).
+- **Pipeline:** a vitrine é construída no **mesmo pipeline do web** (`infra/tekton/pipeline-web.yaml`), depois do admin, em sequência. Assim não há dois kaniko disputando o nó `cicd`.
+- **Manifestos:** `infra/k8s/loja/` (Deployment `amactive-loja` e Service **ClusterIP**).
+- **Sem exposição pública em dev.** O Service é ClusterIP de propósito: não consome um IP do MetalLB (o IP ainda não está reservado no NetBox) e não publica a vitrine na rede do lab. Para testar:
+
+  ```bash
+  kubectl -n amactive port-forward svc/amactive-loja 8088:80
+  ```
+
+  e abrir `http://localhost:8088`.
+
+- **Allow-list do nginx da loja:** só `/api/loja/` e `/api/media/` chegam à API. Fotos de produto saem como `/api/media/...` (`getMediaUrl`), então o nginx da loja precisa desse prefixo.
+- **Limitação de teste:** o nginx e a imagem não podem ser executados localmente (sem Docker nem nginx neste ambiente). A validação completa acontece no primeiro build do pipeline, seguida do port-forward.
+
 ## 5. Dados
 
 Migrations (forward-only, espelhadas no ConfigMap de produção):

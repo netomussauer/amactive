@@ -55,6 +55,12 @@ spec:
     - name: vite-api-url
       type: string
       default: "/api"
+    # Vitrine pública (build `npm run build:loja`, ver apps/web/Dockerfile.loja).
+    # Mesmo código-fonte do admin, imagem própria. Construída DEPOIS do admin,
+    # em sequência, para não disputar o nó cicd com dois kaniko ao mesmo tempo.
+    - name: loja-image-repo
+      type: string
+      default: "harbor.lab.local/amactive/loja"
   results:
     - name: image-digest
       description: Digest sha256 da imagem publicada.
@@ -135,6 +141,49 @@ spec:
               kubectl rollout restart deployment/amactive-web -n amactive
               echo "→ kubectl rollout status (timeout 3m)"
               kubectl rollout status deployment/amactive-web -n amactive --timeout=3m
+
+    # ─── Vitrine (loja online) ─────────────────────────────────────────
+    # Só começa depois do admin estar publicado: o nó cicd é compartilhado com
+    # ArgoCD/Gitea/Harbor e já opera perto do limite de reservas, então dois
+    # kaniko simultâneos geram ExceededNodeResources (visto na prática).
+    - name: kaniko-build-push-loja
+      runAfter: ["rollout-restart"]
+      retries: 1
+      timeout: "15m"
+      taskRef:
+        kind: Task
+        name: amactive-kaniko-build-push
+      params:
+        - name: image
+          value: "$(params.loja-image-repo)"
+        - name: tag
+          value: "$(params.image-tag)"
+        - name: dockerfile
+          value: "Dockerfile.loja"
+        - name: context
+          value: "apps/web"
+      workspaces:
+        - name: source
+          workspace: source
+        - name: docker-credentials
+          workspace: docker-credentials
+
+    - name: rollout-restart-loja
+      runAfter: ["kaniko-build-push-loja"]
+      taskSpec:
+        description: |
+          Reinicia o Deployment amactive-loja no ns amactive e aguarda até 3min
+          o rollout completar.
+        steps:
+          - name: restart
+            image: docker.io/bitnami/kubectl:latest
+            script: |
+              #!/bin/sh
+              set -eu
+              echo "→ kubectl rollout restart deployment/amactive-loja -n amactive"
+              kubectl rollout restart deployment/amactive-loja -n amactive
+              echo "→ kubectl rollout status (timeout 3m)"
+              kubectl rollout status deployment/amactive-loja -n amactive --timeout=3m
   workspaces:
     - name: source
       description: Workspace onde o código é clonado e compartilhado entre tasks.
