@@ -24,6 +24,8 @@ export function HeroBanner() {
       <div className="order-first md:order-none">
         <img
           src={HERO_MODELO.src}
+          srcSet={HERO_MODELO.srcSet}
+          sizes="(min-width: 768px) 50vw, 100vw"
           width={HERO_MODELO.largura}
           height={HERO_MODELO.altura}
           alt="Modelo praticando corrida, vestindo a coleção AMACTIVE"

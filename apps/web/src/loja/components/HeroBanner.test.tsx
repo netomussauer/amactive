@@ -19,7 +19,9 @@ describe('HeroBanner', () => {
   it('mostra a foto da modelo e o logotipo como assets separados, com texto alternativo', () => {
     render(<HeroBanner />)
 
-    expect(screen.getByAltText(/modelo praticando corrida/i)).toHaveAttribute('src', '/brand/hero-modelo.webp')
+    const modelo = screen.getByAltText(/modelo praticando corrida/i)
+    expect(modelo).toHaveAttribute('src', '/brand/hero-modelo-1200.webp')
+    expect(modelo.getAttribute('srcset')).toContain('/brand/hero-modelo-800.webp 800w')
     expect(screen.getByAltText('AMACTIVE')).toHaveAttribute('src', '/brand/amactive-logo-white.png')
   })
 
