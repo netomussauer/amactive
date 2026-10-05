@@ -51,8 +51,11 @@ spec:
       value: "REPLACE_WITH_SHORT_SHA"
     - name: image-tag
       value: "sha-REPLACE_WITH_SHORT_SHA"
+    # Mesmo padrão do pipeline (ver pipeline-web.yaml): "/api" é relativo à
+    # origem e é repassado pelo nginx da própria imagem. O host antigo
+    # api.amactive.local não existe mais — usá-lo quebraria o admin.
     - name: vite-api-url
-      value: "http://api.amactive.local:8000"
+      value: "/api"
   workspaces:
     - name: source
       volumeClaimTemplate:
