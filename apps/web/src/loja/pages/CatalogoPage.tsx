@@ -9,6 +9,7 @@ import { useDebounce } from '@/shared/hooks/useDebounce'
 import { useCategoriasLoja, useProdutosLoja } from '../hooks/useLojaQueries'
 import { ProdutoCard } from '../components/ProdutoCard'
 import { HeroBanner } from '../components/HeroBanner'
+import { ComoFunciona } from '../components/ComoFunciona'
 
 const POR_PAGINA = 24
 
@@ -104,6 +105,8 @@ export function CatalogoPage() {
           <Pagination pagination={produtos.data.pagination} onPageChange={setPage} />
         </>
       )}
+
+      <ComoFunciona />
     </div>
   )
 }
