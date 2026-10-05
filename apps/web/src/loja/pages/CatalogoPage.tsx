@@ -8,6 +8,7 @@ import { Pagination } from '@/shared/components/ui/Pagination'
 import { useDebounce } from '@/shared/hooks/useDebounce'
 import { useCategoriasLoja, useProdutosLoja } from '../hooks/useLojaQueries'
 import { ProdutoCard } from '../components/ProdutoCard'
+import { HeroBanner } from '../components/HeroBanner'
 
 const POR_PAGINA = 24
 
@@ -32,7 +33,8 @@ export function CatalogoPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <HeroBanner />
+      <div id="colecao" className="flex scroll-mt-20 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="font-sans text-2xl font-semibold text-text">Coleção</h1>
         <div className="relative w-full sm:w-72">
           <Search
