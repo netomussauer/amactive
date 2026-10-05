@@ -23,6 +23,7 @@ apps/api/uploads/
 # ── Node / Web (apps/web) ──────────────────────────────────────
 node_modules/
 apps/web/dist/
+apps/web/dist-loja/
 apps/web/.vite/
 apps/web/*.tsbuildinfo
 apps/web/vite.config.js

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoInput
 from amactive.contexts.vendas.application.use_cases.cancelar_pedido import CancelarPedidoUseCase
+from amactive.contexts.vendas.application.use_cases.confirmar_pagamento_vitrine import (
+    ConfirmarPagamentoVitrineUseCase,
+)
 from amactive.contexts.vendas.application.use_cases.consultar_pedidos import (
     ListarPedidosQuery,
     ObterPedidoQuery,
@@ -26,6 +29,7 @@ from amactive.contexts.vendas.domain.entities import (
 )
 from amactive.contexts.vendas.domain.exceptions import PedidoExternoDuplicado
 from amactive.contexts.vendas.infrastructure.api.schemas import (
+    ConfirmarPagamentoRequest,
     CriarPedidoRequest,
     ItemPedidoResponse,
     PagamentoResponse,
@@ -36,6 +40,7 @@ from amactive.contexts.vendas.infrastructure.api.schemas import (
 from amactive.contexts.vendas.infrastructure.persistence.gateways import CatalogoEstoqueGateway
 from amactive.contexts.vendas.infrastructure.persistence.repositories import (
     SqlAlchemyPedidoRepository,
+    SqlAlchemyReservaEstoqueRepository,
     violou_unicidade_pedido_externo,
 )
 from amactive.core.security import CurrentUser, get_current_user, requer_papel
@@ -161,8 +166,41 @@ async def cancelar_pedido(
 ) -> PedidoDetalheResponse:
     pedido_repo = SqlAlchemyPedidoRepository(session)
     gateway = CatalogoEstoqueGateway(session)
-    pedido = await CancelarPedidoUseCase(pedido_repo, gateway).executar(
+    reservas = SqlAlchemyReservaEstoqueRepository(session)
+    pedido = await CancelarPedidoUseCase(pedido_repo, gateway, reservas).executar(
         pedido_id, usuario_id=usuario.id
+    )
+    await session.commit()
+    return _pedido_detalhe_response(pedido)
+
+
+@router.post(
+    "/{pedido_id}/confirmar-pagamento",
+    response_model=PedidoDetalheResponse,
+    summary="Confirma o pagamento de um pedido da vitrine (baixa o estoque)",
+)
+async def confirmar_pagamento_vitrine(
+    pedido_id: UUID,
+    payload: ConfirmarPagamentoRequest,
+    session: AsyncSession = Depends(get_db_session),
+    usuario: CurrentUser = Depends(_requer_escrita),
+) -> PedidoDetalheResponse:
+    pagamentos = [
+        PagamentoInput(
+            forma_pagamento=FormaPagamento(pagamento.forma_pagamento),
+            valor=parse_money(pagamento.valor),
+        )
+        for pagamento in payload.pagamentos
+    ]
+    pedido = await ConfirmarPagamentoVitrineUseCase(
+        SqlAlchemyPedidoRepository(session),
+        CatalogoEstoqueGateway(session),
+        SqlAlchemyReservaEstoqueRepository(session),
+    ).executar(
+        pedido_id,
+        pagamentos=pagamentos,
+        usuario_id=usuario.id,
+        agora=datetime.now(UTC),
     )
     await session.commit()
     return _pedido_detalhe_response(pedido)
@@ -182,6 +220,7 @@ def _pedido_response(pedido: Pedido) -> PedidoResponse:
         confirmado_em=pedido.confirmado_em,
         origem_canal=pedido.origem_canal.value,
         pedido_externo_id=pedido.pedido_externo_id,
+        reservado_ate=pedido.reservado_ate,
     )
 
 

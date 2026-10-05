@@ -52,6 +52,9 @@ origem_canal_pedido_enum = PGEnum(
     # Valor aditivo (migrations/000006_origem_canal_whatsapp) — pedidos
     # registrados manualmente a partir de vendas por WhatsApp.
     "WHATSAPP",
+    # Valor aditivo (migrations/000007_origem_canal_vitrine) — pedidos feitos
+    # pelo cliente final na loja online.
+    "VITRINE",
     name="origem_canal_pedido",
     create_type=False,
 )

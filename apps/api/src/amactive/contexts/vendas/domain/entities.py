@@ -36,6 +36,9 @@ class OrigemCanalPedido(str, Enum):
     # migrations/000006_origem_canal_whatsapp — pedidos registrados
     # manualmente a partir de vendas fechadas por WhatsApp.
     WHATSAPP = "WHATSAPP"
+    # migrations/000007_origem_canal_vitrine — pedido feito pelo cliente final
+    # na loja online; sem operador, aguarda confirmação de pagamento.
+    VITRINE = "VITRINE"
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,9 @@ class Pedido:
     id: UUID
     numero: str
     cliente_id: UUID | None
-    usuario_id: UUID
+    # None apenas para pedidos da VITRINE (cliente final, sem operador) —
+    # ver CHECK chk_pedido_usuario_obrigatorio em migrations/000008.
+    usuario_id: UUID | None
     status: StatusPedido
     subtotal: Decimal
     desconto: Decimal
@@ -72,5 +77,7 @@ class Pedido:
     cancelado_em: datetime | None
     origem_canal: OrigemCanalPedido
     pedido_externo_id: str | None
+    # Prazo da reserva de estoque de um pedido PENDENTE da vitrine (migrations/000008).
+    reservado_ate: datetime | None = None
     itens: list[ItemPedido] = field(default_factory=list)
     pagamentos: list[PagamentoPedido] = field(default_factory=list)

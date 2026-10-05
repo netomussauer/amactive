@@ -7,13 +7,23 @@ from uuid import UUID
 
 from amactive.contexts.vendas.domain.entities import Pedido, StatusPedido
 from amactive.contexts.vendas.domain.exceptions import PedidoJaCancelado, PedidoNaoEncontrado
-from amactive.contexts.vendas.domain.repositories import EstoquePort, PedidoRepository
+from amactive.contexts.vendas.domain.repositories import (
+    EstoquePort,
+    PedidoRepository,
+    ReservaEstoquePort,
+)
 
 
 class CancelarPedidoUseCase:
-    def __init__(self, pedido_repository: PedidoRepository, estoque_port: EstoquePort) -> None:
+    def __init__(
+        self,
+        pedido_repository: PedidoRepository,
+        estoque_port: EstoquePort,
+        reserva_port: ReservaEstoquePort | None = None,
+    ) -> None:
         self._pedidos = pedido_repository
         self._estoque = estoque_port
+        self._reservas = reserva_port
 
     async def executar(self, pedido_id: UUID, *, usuario_id: UUID) -> Pedido:
         pedido = await self._pedidos.buscar_por_id(pedido_id)
@@ -21,6 +31,10 @@ class CancelarPedidoUseCase:
             raise PedidoNaoEncontrado(f"Pedido {pedido_id} não encontrado.")
         if pedido.status == StatusPedido.CANCELADO:
             raise PedidoJaCancelado(f"Pedido {pedido.numero} já está cancelado.")
+
+        # Pedido PENDENTE (vitrine) nunca deu baixa: basta soltar a reserva.
+        if pedido.status == StatusPedido.PENDENTE and self._reservas is not None:
+            await self._reservas.liberar_do_pedido(pedido.id)
 
         if pedido.status == StatusPedido.CONFIRMADO:
             # Estorno — mesmo mecanismo (INSERT em movimentacao_estoque,

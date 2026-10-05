@@ -78,6 +78,13 @@ class RegistrarPedidoManualUseCase:
 def _validar_origem_e_pedido_externo(
     origem_canal: OrigemCanalPedido, pedido_externo_id: str | None
 ) -> None:
+    # Vitrine tem fluxo próprio (reserva + confirmação de pagamento). Registrar
+    # como venda já confirmada por este caminho pularia as duas etapas.
+    if origem_canal == OrigemCanalPedido.VITRINE:
+        raise ErroDeValidacao(
+            "Pedidos da VITRINE são criados pelo checkout da loja online, não pelo "
+            "registro manual de pedidos."
+        )
     if pedido_externo_id is not None and not pedido_externo_id.strip():
         raise ErroDeValidacao("O número do pedido externo não pode ser vazio.")
     if origem_canal != OrigemCanalPedido.NUVEMSHOP and pedido_externo_id is not None:

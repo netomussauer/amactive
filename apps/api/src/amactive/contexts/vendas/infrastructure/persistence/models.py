@@ -26,7 +26,10 @@ class PedidoModel(Base):
     cliente_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("cliente.id", ondelete="SET NULL")
     )
-    usuario_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("usuario.id", ondelete="RESTRICT"))
+    # Nulo só na vitrine (migrations/000008) — o CHECK do banco garante isso.
+    usuario_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("usuario.id", ondelete="RESTRICT")
+    )
     status: Mapped[str] = mapped_column(status_pedido_enum)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     desconto: Mapped[Decimal] = mapped_column(Numeric(10, 2))
@@ -39,6 +42,20 @@ class PedidoModel(Base):
     # nuvemshop.md §3.1/§6.7.
     origem_canal: Mapped[str] = mapped_column(origem_canal_pedido_enum)
     pedido_externo_id: Mapped[str | None] = mapped_column(String(100))
+    # migrations/000008_vitrine_reserva_estoque
+    reservado_ate: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReservaEstoqueModel(Base):
+    __tablename__ = "reserva_estoque"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    pedido_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pedido.id", ondelete="CASCADE"))
+    variante_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("produto_variante.id", ondelete="RESTRICT")
+    )
+    quantidade: Mapped[int] = mapped_column(Integer)
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ItemPedidoModel(Base):

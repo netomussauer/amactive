@@ -23,6 +23,21 @@ class PedidoJaCancelado(ConflitoDeEstado):
     pass
 
 
+class PedidoNaoAguardandoPagamento(ConflitoDeEstado):
+    """Pedido da vitrine que não está PENDENTE (já confirmado ou cancelado),
+    ou que não é da origem VITRINE — só esses podem ter o pagamento confirmado
+    por este fluxo."""
+
+
+class ReservaVencida(ConflitoDeEstado):
+    """A reserva de estoque do pedido da vitrine já expirou: as unidades podem
+    ter sido vendidas a outro cliente. O pedido deve ser cancelado e refeito."""
+
+
+class ItensVitrineInvalidos(ErroDeValidacao):
+    """Checkout da vitrine com a mesma variante repetida no carrinho."""
+
+
 class PedidoExternoDuplicado(ConflitoDeEstado):
     """Já existe um pedido registrado com o mesmo número externo para a mesma
     origem (canal) — ver `uq_pedido_origem_canal_externo` (migrations/000005).

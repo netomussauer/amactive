@@ -30,6 +30,7 @@ from amactive.contexts.integracao_canais.infrastructure.api.router import (
 )
 from amactive.contexts.relatorios.infrastructure.api.router import router as relatorios_router
 from amactive.contexts.vendas.infrastructure.api.router import router as vendas_router
+from amactive.contexts.vitrine.infrastructure.api.router import router as vitrine_router
 from amactive.core.config import settings
 from amactive.shared_kernel.database import engine
 from amactive.shared_kernel.exceptions import DomainError
@@ -110,6 +111,9 @@ app.include_router(relatorios_router)
 # integracao_canais/infrastructure/api/router.py para a justificativa
 # completa (docs/design-integracao-nuvemshop.md §5.1).
 app.include_router(integracao_canais_router)
+# Vitrine pública (/loja): catálogo ativo + checkout. Também sem JWT — ver o
+# docstring de contexts/vitrine/infrastructure/api/router.py.
+app.include_router(vitrine_router)
 
 # Serve as imagens de produto gravadas em disco local (ver
 # catalogo_estoque/infrastructure/storage.py e docs/data-model.md decisão

@@ -30,6 +30,13 @@ class PagamentoRequest(BaseModel):
     valor: str = Field(pattern=r"^\d+\.\d{2}$")
 
 
+class ConfirmarPagamentoRequest(BaseModel):
+    """Pagamentos recebidos de um pedido da vitrine (ver
+    `ConfirmarPagamentoVitrineUseCase`). A soma precisa bater com o total."""
+
+    pagamentos: list[PagamentoRequest] = Field(min_length=1)
+
+
 class CriarPedidoRequest(BaseModel):
     cliente_id: UUID | None = None
     desconto: str = Field(default="0.00", pattern=r"^\d+\.\d{2}$")
@@ -63,7 +70,8 @@ class PedidoResponse(BaseModel):
     id: UUID
     numero: str
     cliente_id: UUID | None
-    usuario_id: UUID
+    # Nulo para pedidos da vitrine (cliente final, sem operador).
+    usuario_id: UUID | None
     status: str
     subtotal: str
     desconto: str
@@ -72,6 +80,7 @@ class PedidoResponse(BaseModel):
     confirmado_em: datetime | None
     origem_canal: str
     pedido_externo_id: str | None
+    reservado_ate: datetime | None = None
 
 
 class PedidoDetalheResponse(PedidoResponse):

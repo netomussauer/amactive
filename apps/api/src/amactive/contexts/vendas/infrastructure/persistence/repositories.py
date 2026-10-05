@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,7 @@ from amactive.contexts.vendas.infrastructure.persistence.models import (
     ItemPedidoModel,
     PagamentoPedidoModel,
     PedidoModel,
+    ReservaEstoqueModel,
 )
 from amactive.shared_kernel.pagination import offset_limit
 
@@ -64,7 +65,7 @@ class SqlAlchemyPedidoRepository:
         *,
         numero: str,
         cliente_id: UUID | None,
-        usuario_id: UUID,
+        usuario_id: UUID | None,
         status: StatusPedido,
         subtotal: Decimal,
         desconto: Decimal,
@@ -75,6 +76,7 @@ class SqlAlchemyPedidoRepository:
         pedido_externo_id: str | None,
         itens: list[dict],
         pagamentos: list[dict],
+        reservado_ate: datetime | None = None,
     ) -> Pedido:
         pedido_id = uuid.uuid4()
         criado_em = _now()
@@ -94,6 +96,7 @@ class SqlAlchemyPedidoRepository:
             cancelado_em=None,
             origem_canal=origem_canal.value,
             pedido_externo_id=pedido_externo_id,
+            reservado_ate=reservado_ate,
         )
         self._session.add(pedido_modelo)
         await self._session.flush()
@@ -161,9 +164,24 @@ class SqlAlchemyPedidoRepository:
             cancelado_em=None,
             origem_canal=origem_canal,
             pedido_externo_id=pedido_externo_id,
+            reservado_ate=reservado_ate,
             itens=itens_entidade,
             pagamentos=pagamentos_entidade,
         )
+
+    async def adicionar_pagamentos(self, pedido_id: UUID, pagamentos: list[dict]) -> None:
+        criado_em = _now()
+        for pagamento in pagamentos:
+            self._session.add(
+                PagamentoPedidoModel(
+                    id=uuid.uuid4(),
+                    pedido_id=pedido_id,
+                    forma_pagamento=pagamento["forma_pagamento"].value,
+                    valor=pagamento["valor"],
+                    criado_em=criado_em,
+                )
+            )
+        await self._session.flush()
 
     async def buscar_por_id(self, pedido_id: UUID) -> Pedido | None:
         pedido_modelo = await self._session.get(PedidoModel, pedido_id)
@@ -238,6 +256,9 @@ class SqlAlchemyPedidoRepository:
             pedido_modelo.cancelado_em = timestamp
         elif status == StatusPedido.CONFIRMADO:
             pedido_modelo.confirmado_em = timestamp
+        # Reserva só existe enquanto o pedido está PENDENTE (CHECK do banco).
+        if status != StatusPedido.PENDENTE:
+            pedido_modelo.reservado_ate = None
         await self._session.flush()
 
     async def _montar_pedido(self, pedido_modelo: PedidoModel) -> Pedido:
@@ -290,6 +311,54 @@ def _pedido_para_entidade(
         cancelado_em=modelo.cancelado_em,
         origem_canal=OrigemCanalPedido(modelo.origem_canal),
         pedido_externo_id=modelo.pedido_externo_id,
+        reservado_ate=modelo.reservado_ate,
         itens=itens,
         pagamentos=pagamentos,
     )
+
+
+class SqlAlchemyReservaEstoqueRepository:
+    """Implementação de `ReservaEstoquePort`. Reserva é um compromisso do
+    pedido da vitrine sobre o saldo — nunca altera `estoque.quantidade`."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def quantidade_reservada_ativa(self, variante_id: UUID, *, agora: datetime) -> int:
+        total = await self._session.scalar(
+            select(func.coalesce(func.sum(ReservaEstoqueModel.quantidade), 0))
+            .join(PedidoModel, PedidoModel.id == ReservaEstoqueModel.pedido_id)
+            .where(
+                ReservaEstoqueModel.variante_id == variante_id,
+                PedidoModel.status == StatusPedido.PENDENTE.value,
+                PedidoModel.reservado_ate > agora,
+            )
+        )
+        return int(total or 0)
+
+    async def registrar(self, *, pedido_id: UUID, variante_id: UUID, quantidade: int) -> None:
+        self._session.add(
+            ReservaEstoqueModel(
+                id=uuid.uuid4(),
+                pedido_id=pedido_id,
+                variante_id=variante_id,
+                quantidade=quantidade,
+                criado_em=_now(),
+            )
+        )
+        await self._session.flush()
+
+    async def liberar_do_pedido(self, pedido_id: UUID) -> None:
+        await self._session.execute(
+            delete(ReservaEstoqueModel).where(ReservaEstoqueModel.pedido_id == pedido_id)
+        )
+
+    async def pedidos_com_reserva_vencida(self, *, agora: datetime) -> list[UUID]:
+        resultado = await self._session.execute(
+            select(PedidoModel.id).where(
+                PedidoModel.status == StatusPedido.PENDENTE.value,
+                PedidoModel.reservado_ate.is_not(None),
+                PedidoModel.reservado_ate <= agora,
+            )
+        )
+        return list(resultado.scalars().all())

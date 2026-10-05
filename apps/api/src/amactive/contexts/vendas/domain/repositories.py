@@ -29,6 +29,10 @@ class VarianteVenda:
     sku: str
     preco_venda: Decimal
     ativo: bool
+    # Usados só pela vitrine (preço promocional e nome no pedido). Defaults
+    # mantêm 100% de compatibilidade com o checkout do PDV/canais.
+    produto_nome: str = ""
+    desconto_percentual: Decimal | None = None
 
 
 class CatalogoPort(Protocol):
@@ -44,6 +48,26 @@ class EstoquePort(Protocol):
         self, *, variante_id: UUID, quantidade: int, pedido_id: UUID, usuario_id: UUID
     ) -> None: ...
 
+    async def saldo_bloqueado(self, variante_id: UUID) -> int:
+        """Saldo físico da variante, com `SELECT ... FOR UPDATE` na linha de
+        `estoque` — serializa checkouts concorrentes da mesma variante até o
+        fim da transação (ver docs/data-model.md § Concorrência)."""
+        ...
+
+
+class ClientePort(Protocol):
+    async def obter_ou_criar_por_telefone(self, *, nome: str, telefone: str) -> UUID: ...
+
+
+class ReservaEstoquePort(Protocol):
+    async def quantidade_reservada_ativa(self, variante_id: UUID, *, agora: datetime) -> int: ...
+
+    async def registrar(self, *, pedido_id: UUID, variante_id: UUID, quantidade: int) -> None: ...
+
+    async def liberar_do_pedido(self, pedido_id: UUID) -> None: ...
+
+    async def pedidos_com_reserva_vencida(self, *, agora: datetime) -> list[UUID]: ...
+
 
 class PedidoRepository(Protocol):
     async def proximo_numero(self) -> str: ...
@@ -53,7 +77,7 @@ class PedidoRepository(Protocol):
         *,
         numero: str,
         cliente_id: UUID | None,
-        usuario_id: UUID,
+        usuario_id: UUID | None,
         status: StatusPedido,
         subtotal: Decimal,
         desconto: Decimal,
@@ -64,7 +88,10 @@ class PedidoRepository(Protocol):
         pedido_externo_id: str | None,
         itens: list[dict],
         pagamentos: list[dict],
+        reservado_ate: datetime | None = None,
     ) -> Pedido: ...
+
+    async def adicionar_pagamentos(self, pedido_id: UUID, pagamentos: list[dict]) -> None: ...
 
     async def buscar_por_id(self, pedido_id: UUID) -> Pedido | None: ...
 
