@@ -10,6 +10,7 @@ const canalTone: Record<string, 'neutral' | 'ok' | 'primary'> = {
   PDV: 'neutral',
   WHATSAPP: 'ok',
   NUVEMSHOP: 'primary',
+  VITRINE: 'primary',
 }
 
 // Badge do canal de origem do pedido (PDV / WhatsApp / Nuvemshop).

@@ -12,6 +12,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Em produção, o nginx repassa /api/ à API (mesma origem). Em dev, o mesmo
+    // caminho relativo é encaminhado ao uvicorn local, sem CORS.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        rewrite: (caminho) => caminho.replace(/^\/api/, ''),
+      },
+    },
     // Polling em vez de eventos nativos do FS: necessário quando o dev
     // server roda dentro do WSL apontando para arquivos em /mnt/c/... (ou,
     // de forma equivalente, em qualquer bind mount tipo Docker/rede) —

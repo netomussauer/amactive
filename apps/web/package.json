@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:loja": "tsc -b && vite build --mode loja --outDir dist-loja --emptyOutDir",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx",
     "test": "vitest"

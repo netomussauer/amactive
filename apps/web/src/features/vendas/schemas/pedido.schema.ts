@@ -116,7 +116,9 @@ export const PedidoResponseSchema = z.object({
   id: z.string(),
   numero: z.string(),
   cliente_id: z.string().nullable().optional(),
-  usuario_id: z.string(),
+  // Nulo em pedidos da vitrine (cliente final, sem operador). Se isto voltasse a
+  // ser z.string(), a listagem inteira quebraria ao aparecer o primeiro pedido da loja.
+  usuario_id: z.string().nullable(),
   status: StatusPedidoSchema,
   // string (não enum) na resposta: um canal novo no backend não deve quebrar a listagem.
   origem_canal: z.string(),
@@ -126,6 +128,8 @@ export const PedidoResponseSchema = z.object({
   valor_total: z.string(),
   criado_em: z.string(),
   confirmado_em: z.string().nullable().optional(),
+  // Prazo da reserva de estoque de um pedido PENDENTE da vitrine.
+  reservado_ate: z.string().nullable().optional(),
 })
 export type Pedido = z.infer<typeof PedidoResponseSchema>
 

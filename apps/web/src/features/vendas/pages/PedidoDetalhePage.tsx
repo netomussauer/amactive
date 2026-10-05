@@ -5,10 +5,12 @@ import { Spinner } from '@/shared/components/ui/Spinner'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { usePermissoes } from '@/shared/hooks/usePermissoes'
 import { PedidoDetalheCard } from '../components/PedidoDetalheCard'
+import { ConfirmarPagamentoVitrineCard } from '../components/ConfirmarPagamentoVitrineCard'
 import { usePedido } from '../hooks/usePedido'
 import { useCancelarPedido } from '../hooks/useCancelarPedido'
 
-// Detalhe do pedido, com ação de cancelamento.
+// Detalhe do pedido, com ação de cancelamento e, para pedido da loja online
+// pendente, a confirmação do pagamento.
 export function PedidoDetalhePage() {
   const { pedidoId } = useParams<{ pedidoId: string }>()
   const { podeVenderNoPdv } = usePermissoes()
@@ -32,6 +34,8 @@ export function PedidoDetalhePage() {
   }
 
   const podeCancelar = pedido.status !== 'CANCELADO' && podeVenderNoPdv
+  const aguardandoPagamentoVitrine =
+    pedido.origem_canal === 'VITRINE' && pedido.status === 'PENDENTE' && podeVenderNoPdv
 
   return (
     <PageWrapper
@@ -53,7 +57,10 @@ export function PedidoDetalhePage() {
         ) : undefined
       }
     >
-      <PedidoDetalheCard pedido={pedido} />
+      <div className="space-y-6">
+        {aguardandoPagamentoVitrine && <ConfirmarPagamentoVitrineCard pedido={pedido} />}
+        <PedidoDetalheCard pedido={pedido} />
+      </div>
     </PageWrapper>
   )
 }

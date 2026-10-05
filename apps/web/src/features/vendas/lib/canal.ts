@@ -9,8 +9,18 @@ export const ORIGEM_CANAL_OPTIONS: ReadonlyArray<{ value: OrigemCanal; label: st
   { value: 'NUVEMSHOP', label: 'Nuvemshop' },
 ]
 
+// Pedidos da loja online chegam só pelo checkout público, nunca pelo registro
+// manual — por isso ficam fora de ORIGEM_CANAL_OPTIONS (que alimenta o PDV).
+const ROTULOS_SOMENTE_EXIBICAO: Record<string, string> = {
+  VITRINE: 'Loja online',
+}
+
 export function labelCanal(canal: string): string {
-  return ORIGEM_CANAL_OPTIONS.find((option) => option.value === canal)?.label ?? canal
+  return (
+    ORIGEM_CANAL_OPTIONS.find((option) => option.value === canal)?.label ??
+    ROTULOS_SOMENTE_EXIBICAO[canal] ??
+    canal
+  )
 }
 
 // Rótulo do número do pedido externo. Só a Nuvemshop usa esse número; o fallback

@@ -5,6 +5,7 @@ import {
   PedidoDetalheResponseSchema,
   CriarPedidoSchema,
   type CriarPedidoDTO,
+  type PagamentoRequest,
 } from '../schemas/pedido.schema'
 import type { PedidoFilter } from '../types/pedido.types'
 
@@ -30,6 +31,16 @@ export const pedidoService = {
 
   async cancelar(id: string) {
     const raw = await apiClient<unknown>(`/pedidos/${id}/cancelar`, { method: 'PATCH' })
+    return PedidoDetalheResponseSchema.parse(raw)
+  },
+
+  // Pedido da vitrine: a equipe confirma o pagamento recebido pelo WhatsApp.
+  // Só aqui o estoque é baixado (ver ConfirmarPagamentoVitrineUseCase no backend).
+  async confirmarPagamentoVitrine(id: string, pagamentos: PagamentoRequest[]) {
+    const raw = await apiClient<unknown>(`/pedidos/${id}/confirmar-pagamento`, {
+      method: 'POST',
+      body: JSON.stringify({ pagamentos }),
+    })
     return PedidoDetalheResponseSchema.parse(raw)
   },
 }
