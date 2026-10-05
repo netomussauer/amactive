@@ -48,7 +48,10 @@ export function ProdutoPage() {
 
 function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
   const coresDisponiveis = useMemo(() => [...new Set(produto.variantes.map((v) => v.cor))], [produto])
-  const [cor, setCor] = useState(coresDisponiveis[0] ?? '')
+  // Começa na primeira cor que já tem foto; se nenhuma tiver, na primeira cor.
+  const corInicial =
+    coresDisponiveis.find((c) => produto.imagens.some((i) => i.cor === c)) ?? coresDisponiveis[0] ?? ''
+  const [cor, setCor] = useState(corInicial)
   const variantesDaCor = useMemo(
     () => produto.variantes.filter((v) => v.cor === cor),
     [produto, cor],
@@ -59,8 +62,9 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
   const varianteSelecionada =
     variantesDaCor.find((v) => v.id === varianteId) ?? variantesDaCor.find((v) => v.disponivel > 0) ?? variantesDaCor[0]
 
-  const imagensDaCor = produto.imagens.filter((i) => i.cor === cor)
-  const galeria = imagensDaCor.length > 0 ? imagensDaCor : produto.imagens.slice(0, 1)
+  // Só as fotos DESTA cor. Sem foto para a cor escolhida, a vitrine não mostra a
+  // foto de outra cor: exibe um aviso no lugar (ver o bloco de imagem abaixo).
+  const galeria = produto.imagens.filter((i) => i.cor === cor)
   const [indiceImagem, setIndiceImagem] = useState(0)
   const imagemAtual = galeria[indiceImagem] ?? galeria[0]
 
@@ -133,7 +137,9 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-text-muted">Sem imagem</div>
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-muted">
+              {produto.imagens.length > 0 ? `Foto de ${cor} em breve` : 'Sem imagem'}
+            </div>
           )}
         </div>
         {galeria.length > 1 && (
