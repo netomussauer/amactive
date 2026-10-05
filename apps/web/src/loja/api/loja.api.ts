@@ -5,6 +5,7 @@ import { apiClient } from '@/shared/lib/api-client'
 import { buildQueryString } from '@/shared/lib/build-query-string'
 import {
   CategoriasLojaSchema,
+  OpcoesFiltroLojaSchema,
   PedidoCheckoutLojaSchema,
   ProdutoDetalheLojaSchema,
   ProdutoListaLojaSchema,
@@ -16,10 +17,19 @@ export type FiltrosProdutosLoja = {
   per_page: number
   categoria_id?: string
   q?: string
+  cor?: string
+  tamanho?: string
+  preco_min?: string
+  preco_max?: string
+  ordem?: 'nome' | 'preco_asc' | 'preco_desc' | 'desconto'
 }
 
 export async function listarCategoriasLoja() {
   return CategoriasLojaSchema.parse(await apiClient<unknown>('/loja/categorias'))
+}
+
+export async function listarOpcoesFiltroLoja() {
+  return OpcoesFiltroLojaSchema.parse(await apiClient<unknown>('/loja/filtros'))
 }
 
 export async function listarProdutosLoja(filtros: FiltrosProdutosLoja) {

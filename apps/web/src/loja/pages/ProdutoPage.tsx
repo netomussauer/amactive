@@ -6,8 +6,10 @@ import { Skeleton } from '@/shared/components/ui/Skeleton'
 import { EmptyState } from '@/shared/components/ui/EmptyState'
 import { PrecoPromocional } from '@/shared/components/ui/PrecoPromocional'
 import { getMediaUrl } from '@/shared/lib/api-client'
+import { formatCurrencyBRL } from '@/shared/lib/format'
 import { toast } from '@/shared/lib/toast'
-import { useProdutoLoja } from '../hooks/useLojaQueries'
+import { ProdutoCard } from '../components/ProdutoCard'
+import { useProdutoLoja, useRelacionadosLoja } from '../hooks/useLojaQueries'
 import { useCarrinhoStore, LIMITE_QUANTIDADE_POR_ITEM } from '../store/carrinho.store'
 import type { ProdutoDetalheLoja, VarianteLoja } from '../schemas/loja.schema'
 
@@ -96,7 +98,32 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
   }
 
   return (
-    <div className="grid gap-8 md:grid-cols-2">
+    <div className="flex flex-col gap-10 pb-24 md:pb-0">
+      <nav aria-label="Caminho" className="text-sm text-text-muted">
+        <ol className="flex flex-wrap items-center gap-2">
+          <li>
+            <Link to="/" className="hover:text-text">
+              Coleção
+            </Link>
+          </li>
+          {produto.categoria && (
+            <>
+              <li aria-hidden="true">/</li>
+              <li>
+                <Link to={`/?categoria=${produto.categoria.id}`} className="hover:text-text">
+                  {produto.categoria.nome}
+                </Link>
+              </li>
+            </>
+          )}
+          <li aria-hidden="true">/</li>
+          <li aria-current="page" className="text-text">
+            {produto.nome}
+          </li>
+        </ol>
+      </nav>
+
+      <div className="grid gap-8 md:grid-cols-2">
       <div className="flex flex-col gap-3">
         <div className="aspect-[3/4] overflow-hidden rounded-lg bg-bg-subtle">
           {imagemAtual ? (
@@ -221,7 +248,50 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
           </p>
         </div>
       </div>
+      </div>
+
+      <ProdutosRelacionados produtoAtualId={produto.id} categoriaId={produto.categoria?.id} />
+
+      {/* Compra sempre à mão no celular: o botão principal pode estar longe do olhar ao rolar. */}
+      <div className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-between gap-3 border-t border-border bg-bg p-3 shadow-lg md:hidden">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-xs text-text-muted">
+            {varianteSelecionada ? `${varianteSelecionada.tamanho} · ${varianteSelecionada.cor}` : ''}
+          </span>
+          <span className="font-semibold text-primary">
+            {varianteSelecionada ? formatCurrencyBRL(varianteSelecionada.preco_unitario) : ''}
+          </span>
+        </div>
+        <Button size="lg" disabled={esgotado} onClick={adicionarAoCarrinho}>
+          {esgotado ? 'Esgotado' : 'Adicionar'}
+        </Button>
+      </div>
     </div>
+  )
+}
+
+function ProdutosRelacionados({
+  produtoAtualId,
+  categoriaId,
+}: {
+  produtoAtualId: string
+  categoriaId: string | undefined
+}) {
+  const relacionados = useRelacionadosLoja(categoriaId)
+  const itens = (relacionados.data?.data ?? []).filter((p) => p.id !== produtoAtualId).slice(0, 4)
+  if (itens.length === 0) return null
+
+  return (
+    <section aria-labelledby="relacionados-titulo" className="flex flex-col gap-4">
+      <h2 id="relacionados-titulo" className="font-sans text-xl font-semibold text-text">
+        Você também pode gostar
+      </h2>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {itens.map((produto) => (
+          <ProdutoCard key={produto.id} produto={produto} />
+        ))}
+      </div>
+    </section>
   )
 }
 

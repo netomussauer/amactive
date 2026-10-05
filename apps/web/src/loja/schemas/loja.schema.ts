@@ -56,6 +56,11 @@ export const ProdutoListaLojaSchema = z.object({
   }),
 })
 
+export const OpcoesFiltroLojaSchema = z.object({
+  cores: z.array(z.string()),
+  tamanhos: z.array(z.string()),
+})
+
 export const ItemPedidoLojaSchema = z.object({
   sku: z.string(),
   descricao: z.string(),

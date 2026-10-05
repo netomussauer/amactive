@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import {
   criarPedidoLoja,
   listarCategoriasLoja,
+  listarOpcoesFiltroLoja,
   listarProdutosLoja,
   obterProdutoLoja,
   type FiltrosProdutosLoja,
@@ -24,6 +25,23 @@ export function useProdutosLoja(filtros: FiltrosProdutosLoja) {
     queryFn: () => listarProdutosLoja(filtros),
     // Troca de página/filtro mantém a grade anterior até chegar a nova — sem piscar.
     placeholderData: keepPreviousData,
+  })
+}
+
+export function useOpcoesFiltroLoja() {
+  return useQuery({
+    queryKey: [...CHAVE, 'opcoes-filtro'],
+    queryFn: listarOpcoesFiltroLoja,
+    staleTime: 5 * 60_000,
+  })
+}
+
+/** Produtos da mesma categoria para a página de produto (só busca com categoria). */
+export function useRelacionadosLoja(categoriaId: string | undefined) {
+  return useQuery({
+    queryKey: [...CHAVE, 'relacionados', categoriaId],
+    queryFn: () => listarProdutosLoja({ page: 1, per_page: 5, categoria_id: categoriaId }),
+    enabled: Boolean(categoriaId),
   })
 }
 
