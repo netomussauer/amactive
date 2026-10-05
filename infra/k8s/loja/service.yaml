@@ -1,12 +1,11 @@
-# Service da VITRINE — ClusterIP de propósito, sem LoadBalancer.
+# Service da VITRINE (loja online) exposto na rede do lab via MetalLB.
 #
-# O ambiente de desenvolvimento não expõe a vitrine na rede do lab nem na
-# internet. Para testar, use port-forward:
-#   kubectl -n amactive port-forward svc/amactive-loja 8088:80
-#   e abra http://localhost:8088
+# IP reservado no NetBox (lb_amactive_loja, infra-lab/terraform/proxmox/netbox.tf)
+# e DNS no Pi-hole: loja.amactive.local -> 192.168.1.214.
 #
-# A exposição pública (loja.amactive.com.br, atrás da Cloudflare) é um item
-# separado, da fase de produção (ver docs/arquitetura-producao.md).
+# Acesso apenas pela LAN do lab. Não é exposição pública: a publicação na
+# internet (loja.amactive.com.br, atrás da Cloudflare) é item separado, da fase
+# de produção (ver docs/arquitetura-producao.md).
 apiVersion: v1
 kind: Service
 metadata:
@@ -20,7 +19,8 @@ metadata:
     lab_id: "lab-k8s-01"
     lab_owner: "jose.mussauer"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
+  loadBalancerIP: 192.168.1.214
   selector:
     app.kubernetes.io/name: "amactive-loja"
   ports:

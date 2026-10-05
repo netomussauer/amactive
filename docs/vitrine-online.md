@@ -72,14 +72,10 @@ Preço e desconto são sempre recalculados no backend. O desconto promocional do
 
 - **Imagem:** `harbor.lab.local/amactive/loja`, gerada por `apps/web/Dockerfile.loja` (build `npm run build:loja`, servido por nginx com `apps/web/nginx.loja.conf`).
 - **Pipeline:** a vitrine é construída no **mesmo pipeline do web** (`infra/tekton/pipeline-web.yaml`), depois do admin, em sequência. Assim não há dois kaniko disputando o nó `cicd`.
-- **Manifestos:** `infra/k8s/loja/` (Deployment `amactive-loja` e Service **ClusterIP**).
-- **Sem exposição pública em dev.** O Service é ClusterIP de propósito: não consome um IP do MetalLB (o IP ainda não está reservado no NetBox) e não publica a vitrine na rede do lab. Para testar:
-
-  ```bash
-  kubectl -n amactive port-forward svc/amactive-loja 8088:80
-  ```
-
-  e abrir `http://localhost:8088`.
+- **Manifestos:** `infra/k8s/loja/` (Deployment `amactive-loja` e Service **LoadBalancer** com IP fixo `192.168.1.214`).
+- **Acesso na rede do lab:** `http://loja.amactive.local` (DNS no Pi-hole, registro em `infra-lab/kubernetes/network-services/pihole/configmap-records.yaml`). É acessível só pela LAN do lab; não é exposição pública.
+- **Pendência:** a reserva do IP no NetBox (`lb_amactive_loja`) não foi aplicada. O `terraform plan` do `infra-lab` mostrou que o estado local está fora de sincronia com o NetBox (quer recriar site e prefixo existentes). Corrigir o estado antes de aplicar. Enquanto isso, o IP está livre no cluster e fora de todos os manifestos.
+- **Alternativa de teste (sem DNS):** `kubectl -n amactive port-forward svc/amactive-loja 8088:80` e abrir `http://localhost:8088`.
 
 - **Allow-list do nginx da loja:** só `/api/loja/` e `/api/media/` chegam à API. Fotos de produto saem como `/api/media/...` (`getMediaUrl`), então o nginx da loja precisa desse prefixo.
 - **Limitação de teste:** o nginx e a imagem não podem ser executados localmente (sem Docker nem nginx neste ambiente). A validação completa acontece no primeiro build do pipeline, seguida do port-forward.
