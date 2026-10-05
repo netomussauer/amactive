@@ -1,12 +1,17 @@
 import { ArrowRight, ArrowUpDown, Dumbbell, Heart, Leaf } from 'lucide-react'
 import { HERO_MODELO } from '../config'
 
-// Banner principal da vitrine, montado a partir de elementos separados:
-//   - foto da modelo (asset próprio, proporção original, sem recorte);
-//   - logotipo (asset próprio, public/brand/amactive-logo-white.png);
-//   - título, subtítulo, botão e benefícios: texto real do site (acessível e
-//     editável), não imagem.
-// Desktop: texto à esquerda e foto inteira à direita. Celular: foto em cima.
+// Banner principal da vitrine: a foto da modelo INTEIRA (sem recorte), com
+// logotipo, título, subtítulo, botão e benefícios sobrepostos por cima.
+//
+//   - Desktop: a foto fica alinhada à direita, com a altura do banner (corpo
+//     inteiro visível). As laterais que sobram são preenchidas pela própria
+//     foto, ampliada e desfocada ao fundo, e o texto fica sobre a área à
+//     esquerda, com um degradê para legibilidade.
+//   - Celular: a foto define a altura e o texto fica sobre a parte inferior,
+//     com degradê vertical.
+//
+// Todo o texto é HTML real (acessível e editável), não parte da imagem.
 
 const BENEFICIOS = [
   { icone: Leaf, texto: 'Tecnologia e conforto' },
@@ -19,22 +24,36 @@ export function HeroBanner() {
   return (
     <section
       aria-labelledby="hero-titulo"
-      className="grid overflow-hidden rounded-xl bg-blue-900 text-white md:grid-cols-2"
+      className="relative isolate overflow-hidden rounded-xl bg-blue-900 text-white md:h-[min(90vh,820px)]"
     >
-      <div className="order-first md:order-none">
-        <img
-          src={HERO_MODELO.src}
-          srcSet={HERO_MODELO.srcSet}
-          sizes="(min-width: 768px) 50vw, 100vw"
-          width={HERO_MODELO.largura}
-          height={HERO_MODELO.altura}
-          alt="Modelo praticando corrida, vestindo a coleção AMACTIVE"
-          fetchPriority="high"
-          className="h-auto w-full object-cover"
-        />
-      </div>
+      {/* Fundo (só desktop): a mesma foto, ampliada e desfocada, preenche as laterais. */}
+      <img
+        src={HERO_MODELO.srcFundo}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 hidden h-full w-full scale-110 object-cover opacity-50 blur-2xl md:block"
+      />
 
-      <div className="flex flex-col justify-between gap-8 p-6 md:p-12">
+      {/* Foto inteira. No celular define a altura do banner; no desktop fica à direita, na altura total. */}
+      <img
+        src={HERO_MODELO.src}
+        srcSet={HERO_MODELO.srcSet}
+        sizes="(min-width: 768px) 60vw, 100vw"
+        width={HERO_MODELO.largura}
+        height={HERO_MODELO.altura}
+        alt="Modelo praticando corrida, vestindo a coleção AMACTIVE"
+        fetchPriority="high"
+        className="block h-auto w-full md:absolute md:right-0 md:top-0 md:h-full md:w-auto"
+      />
+
+      {/* Degradê de leitura: vertical no celular, da esquerda no desktop. */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-gradient-to-t from-blue-900 via-blue-900/60 via-40% to-transparent md:bg-gradient-to-r md:from-blue-900 md:via-blue-900/75 md:via-45% md:to-transparent"
+      />
+
+      {/* Conteúdo sobreposto. */}
+      <div className="absolute inset-0 flex flex-col justify-between gap-8 p-6 md:w-[55%] md:p-12">
         <img
           src="/brand/amactive-logo-white.png"
           alt="AMACTIVE"

@@ -4,6 +4,8 @@
 export const HERO_MODELO = {
   src: '/brand/hero-modelo-1200.webp',
   srcSet: '/brand/hero-modelo-800.webp 800w, /brand/hero-modelo-1200.webp 1200w',
+  /** Mesma foto, usada só como fundo desfocado nas laterais no desktop. */
+  srcFundo: '/brand/hero-modelo-800.webp',
   largura: 1200,
   altura: 1796,
 } as const
