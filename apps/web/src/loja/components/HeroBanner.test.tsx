@@ -3,19 +3,31 @@ import { render, screen } from '@testing-library/react'
 import { HeroBanner } from './HeroBanner'
 
 describe('HeroBanner', () => {
-  it('leva à coleção e tem texto alternativo descritivo', () => {
+  it('apresenta o título como texto real, não como imagem', () => {
     render(<HeroBanner />)
 
-    const link = screen.getByRole('link', { name: 'Ir para a coleção' })
-    expect(link).toHaveAttribute('href', '#colecao')
-    expect(screen.getByAltText(/SEU RITMO\. SEU ESTILO\./)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('SEU RITMO.')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('SEU ESTILO.')
   })
 
-  it('oferece as duas larguras da arte para telas grandes e pequenas', () => {
+  it('o botão leva à coleção', () => {
     render(<HeroBanner />)
 
-    const imagem = screen.getByAltText(/SEU RITMO/)
-    expect(imagem.getAttribute('srcset')).toContain('/brand/hero-home-1536.webp 1536w')
-    expect(imagem.getAttribute('srcset')).toContain('/brand/hero-home-1920.webp 1920w')
+    expect(screen.getByRole('link', { name: /conheça a coleção/i })).toHaveAttribute('href', '#colecao')
+  })
+
+  it('mostra a foto da modelo e o logotipo como assets separados, com texto alternativo', () => {
+    render(<HeroBanner />)
+
+    expect(screen.getByAltText(/modelo praticando corrida/i)).toHaveAttribute('src', '/brand/hero-modelo.webp')
+    expect(screen.getByAltText('AMACTIVE')).toHaveAttribute('src', '/brand/amactive-logo-white.png')
+  })
+
+  it('lista os quatro benefícios da arte', () => {
+    render(<HeroBanner />)
+
+    for (const texto of ['Tecnologia e conforto', 'Respirabilidade e leveza', 'Performance que move', 'Feito para você']) {
+      expect(screen.getByText(texto)).toBeInTheDocument()
+    }
   })
 })
