@@ -12,6 +12,8 @@ webhook de integração. Por isso:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
@@ -35,6 +37,7 @@ from amactive.contexts.vitrine.infrastructure.api.schemas import (
     CheckoutRequest,
     ImagemPublica,
     ItemPedidoPublico,
+    OpcoesFiltroPublico,
     PedidoCheckoutPublico,
     ProdutoDetalhePublico,
     ProdutoListaPublica,
@@ -46,7 +49,7 @@ from amactive.contexts.vitrine.infrastructure.persistence.consultas import (
     ProdutoVitrine,
 )
 from amactive.shared_kernel.database import get_db_session
-from amactive.shared_kernel.exceptions import EntidadeNaoEncontrada
+from amactive.shared_kernel.exceptions import EntidadeNaoEncontrada, ErroDeValidacao
 from amactive.shared_kernel.money import to_money_str
 from amactive.shared_kernel.schemas import Pagination
 
@@ -61,14 +64,27 @@ async def listar_categorias(
     return [CategoriaPublica(id=c.id, nome=c.nome, slug=c.slug) for c in categorias]
 
 
+@router.get("/filtros", response_model=OpcoesFiltroPublico)
+async def listar_filtros(session: AsyncSession = Depends(get_db_session)) -> OpcoesFiltroPublico:
+    opcoes = await consultas.listar_opcoes_filtro(session)
+    return OpcoesFiltroPublico(cores=opcoes.cores, tamanhos=opcoes.tamanhos)
+
+
 @router.get("/produtos", response_model=ProdutoListaPublica)
 async def listar_produtos(
     page: int = Query(1, ge=1),
     per_page: int = Query(24, ge=1, le=60),
     categoria_id: UUID | None = None,
     q: str | None = Query(default=None, max_length=100),
+    cor: str | None = Query(default=None, max_length=50),
+    tamanho: str | None = Query(default=None, max_length=10),
+    preco_min: Decimal | None = Query(default=None, ge=0),
+    preco_max: Decimal | None = Query(default=None, ge=0),
+    ordem: Literal["nome", "preco_asc", "preco_desc", "desconto"] = "nome",
     session: AsyncSession = Depends(get_db_session),
 ) -> ProdutoListaPublica:
+    if preco_min is not None and preco_max is not None and preco_min > preco_max:
+        raise ErroDeValidacao("preco_min não pode ser maior que preco_max.")
     produtos, total = await consultas.listar_produtos(
         session,
         agora=datetime.now(UTC),
@@ -76,6 +92,11 @@ async def listar_produtos(
         per_page=per_page,
         categoria_id=categoria_id,
         busca=q,
+        cor=cor,
+        tamanho=tamanho,
+        preco_min=preco_min,
+        preco_max=preco_max,
+        ordem=ordem,
     )
     return ProdutoListaPublica(
         data=[_resumo(p) for p in produtos],

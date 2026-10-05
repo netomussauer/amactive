@@ -32,6 +32,7 @@ from amactive.contexts.vendas.infrastructure.persistence.models import (
     PedidoModel,
     ReservaEstoqueModel,
 )
+from amactive.shared_kernel.exceptions import ErroDeValidacao
 from amactive.shared_kernel.money import aplicar_desconto_percentual
 from amactive.shared_kernel.pagination import offset_limit
 
@@ -103,6 +104,19 @@ async def listar_categorias(session: AsyncSession) -> list[CategoriaVitrine]:
     return [CategoriaVitrine(id=i, nome=n, slug=s) for i, n, s in resultado.all()]
 
 
+ORDENS_LISTAGEM = ("nome", "preco_asc", "preco_desc", "desconto")
+
+
+def _preco_efetivo_minimo():
+    """Menor preço efetivo entre as variantes do produto (já com desconto
+    promocional), para filtrar e ordenar por preço no banco."""
+    return func.min(
+        ProdutoVarianteModel.preco_venda
+        * (100 - func.coalesce(ProdutoModel.desconto_percentual, 0))
+        / 100
+    )
+
+
 async def listar_produtos(
     session: AsyncSession,
     *,
@@ -111,10 +125,19 @@ async def listar_produtos(
     per_page: int,
     categoria_id: UUID | None,
     busca: str | None,
+    cor: str | None = None,
+    tamanho: str | None = None,
+    preco_min: Decimal | None = None,
+    preco_max: Decimal | None = None,
+    ordem: str = "nome",
 ) -> tuple[list[ProdutoVitrine], int]:
     """Produtos vendáveis: ativos, não excluídos e com pelo menos uma variante
     ativa. Variantes sem saldo aparecem com `disponivel=0` (o cliente vê que
-    existe, mas não pode pedir)."""
+    existe, mas não pode pedir).
+
+    Filtros de cor/tamanho valem para o produto que tenha AO MENOS uma variante
+    com aquele atributo. Faixa de preço usa o menor preço efetivo do produto.
+    """
     condicoes: list[ColumnElement[bool]] = [
         ProdutoModel.ativo.is_(True),
         ProdutoModel.deletado_em.is_(None),
@@ -124,20 +147,45 @@ async def listar_produtos(
         condicoes.append(ProdutoModel.categoria_id == categoria_id)
     if busca:
         condicoes.append(ProdutoModel.nome.ilike(f"%{busca.strip()}%"))
+    if cor:
+        condicoes.append(ProdutoVarianteModel.cor == cor)
+    if tamanho:
+        condicoes.append(ProdutoVarianteModel.tamanho == tamanho)
+
+    if ordem not in ORDENS_LISTAGEM:
+        raise ErroDeValidacao(f"Ordenação inválida: {ordem}.")
+
+    preco = _preco_efetivo_minimo()
+    having: list[ColumnElement[bool]] = []
+    if preco_min is not None:
+        having.append(preco >= preco_min)
+    if preco_max is not None:
+        having.append(preco <= preco_max)
 
     base = (
         select(ProdutoModel.id)
         .join(ProdutoVarianteModel, ProdutoVarianteModel.produto_id == ProdutoModel.id)
         .where(*condicoes)
         .group_by(ProdutoModel.id)
+        .having(*having)
     )
     total = await session.scalar(select(func.count()).select_from(base.subquery()))
+
+    criterio_ordem = {
+        "nome": (func.min(ProdutoModel.nome), ProdutoModel.id),
+        "preco_asc": (preco, ProdutoModel.id),
+        "preco_desc": (preco.desc(), ProdutoModel.id),
+        "desconto": (
+            func.coalesce(ProdutoModel.desconto_percentual, 0).desc(),
+            func.min(ProdutoModel.nome),
+        ),
+    }[ordem]
 
     offset, limit = offset_limit(page=page, per_page=per_page)
     ids_pagina = [
         pid
         for (pid,) in await session.execute(
-            base.order_by(func.min(ProdutoModel.nome), ProdutoModel.id).offset(offset).limit(limit)
+            base.order_by(*criterio_ordem).offset(offset).limit(limit)
         )
     ]
     if not ids_pagina:
@@ -145,8 +193,8 @@ async def listar_produtos(
 
     produtos = await _carregar_produtos(session, ids_pagina, agora=agora)
     # Mantém a ordem da paginação (a consulta de carga não garante ordem).
-    ordem = {pid: i for i, pid in enumerate(ids_pagina)}
-    produtos.sort(key=lambda p: ordem[p.id])
+    posicao = {pid: i for i, pid in enumerate(ids_pagina)}
+    produtos.sort(key=lambda p: posicao[p.id])
     return produtos, int(total or 0)
 
 
@@ -251,6 +299,36 @@ async def _carregar_produtos(
 
     # Produto sem nenhuma variante ativa não é vendável: some da listagem.
     return [p for p in produtos.values() if p.variantes]
+
+
+@dataclass(frozen=True)
+class OpcoesFiltro:
+    cores: list[str]
+    tamanhos: list[str]
+
+
+async def listar_opcoes_filtro(session: AsyncSession) -> OpcoesFiltro:
+    """Cores e tamanhos que existem em produtos vendáveis (ativos, não excluídos,
+    com variante ativa). Só o que a loja de fato vende aparece no filtro."""
+    base = (
+        select(ProdutoVarianteModel.cor, ProdutoVarianteModel.tamanho)
+        .join(ProdutoModel, ProdutoModel.id == ProdutoVarianteModel.produto_id)
+        .where(
+            ProdutoModel.ativo.is_(True),
+            ProdutoModel.deletado_em.is_(None),
+            ProdutoVarianteModel.ativo.is_(True),
+        )
+        .distinct()
+    )
+    linhas = (await session.execute(base)).all()
+    cores = sorted({cor for cor, _ in linhas})
+    # Tamanhos: letras primeiro na ordem P, M, G, GG e depois numéricos (38, 40...).
+    ordem_letras = {"PP": 0, "P": 1, "M": 2, "G": 3, "GG": 4, "XG": 5}
+    tamanhos = sorted(
+        {tamanho for _, tamanho in linhas},
+        key=lambda t: (0, ordem_letras[t], "") if t in ordem_letras else (1, 0, t.zfill(4)),
+    )
+    return OpcoesFiltro(cores=cores, tamanhos=tamanhos)
 
 
 async def descrever_variantes(session: AsyncSession, variante_ids: list[UUID]) -> dict[UUID, str]:

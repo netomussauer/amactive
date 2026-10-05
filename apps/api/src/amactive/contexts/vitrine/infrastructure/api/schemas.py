@@ -23,6 +23,11 @@ class CategoriaPublica(BaseModel):
     slug: str
 
 
+class OpcoesFiltroPublico(BaseModel):
+    cores: list[str]
+    tamanhos: list[str]
+
+
 class CategoriaRefPublica(BaseModel):
     id: UUID
     nome: str
