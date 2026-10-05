@@ -30,7 +30,12 @@ from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoI
 from amactive.contexts.vendas.application.use_cases.criar_pedido import CriarPedidoUseCase
 from amactive.contexts.vendas.domain.entities import OrigemCanalPedido, Pedido
 from amactive.contexts.vendas.domain.exceptions import PedidoExternoDuplicado
-from amactive.contexts.vendas.domain.repositories import CatalogoPort, EstoquePort, PedidoRepository
+from amactive.contexts.vendas.domain.repositories import (
+    CatalogoPort,
+    EstoquePort,
+    PedidoRepository,
+    ReservaEstoquePort,
+)
 from amactive.shared_kernel.exceptions import ErroDeValidacao
 
 
@@ -40,9 +45,13 @@ class RegistrarPedidoManualUseCase:
         pedido_repository: PedidoRepository,
         catalogo_port: CatalogoPort,
         estoque_port: EstoquePort,
+        reserva_port: ReservaEstoquePort | None = None,
     ) -> None:
         self._pedidos = pedido_repository
-        self._criar_pedido = CriarPedidoUseCase(pedido_repository, catalogo_port, estoque_port)
+        # O PDV respeita as reservas da vitrine (ver CriarPedidoUseCase).
+        self._criar_pedido = CriarPedidoUseCase(
+            pedido_repository, catalogo_port, estoque_port, reserva_port
+        )
 
     async def executar(
         self,

@@ -112,7 +112,8 @@ async def criar_pedido(
     for _tentativa in range(_MAX_TENTATIVAS_DEADLOCK):
         pedido_repo = SqlAlchemyPedidoRepository(session)
         gateway = CatalogoEstoqueGateway(session)
-        use_case = RegistrarPedidoManualUseCase(pedido_repo, gateway, gateway)
+        reservas = SqlAlchemyReservaEstoqueRepository(session)
+        use_case = RegistrarPedidoManualUseCase(pedido_repo, gateway, gateway, reservas)
         try:
             pedido = await use_case.executar(
                 cliente_id=payload.cliente_id,

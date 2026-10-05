@@ -18,10 +18,14 @@ from amactive.contexts.vendas.application.use_cases.cancelar_pedido import Cance
 from amactive.contexts.vendas.application.use_cases.confirmar_pagamento_vitrine import (
     ConfirmarPagamentoVitrineUseCase,
 )
+from amactive.contexts.vendas.application.use_cases.criar_pedido import CriarPedidoUseCase
 from amactive.contexts.vendas.application.use_cases.criar_pedido_vitrine import (
     PRAZO_RESERVA_PADRAO,
     CriarPedidoVitrineUseCase,
     ItemVitrineInput,
+)
+from amactive.contexts.vendas.application.use_cases.expirar_reservas_vencidas import (
+    ExpirarReservasVencidasUseCase,
 )
 from amactive.contexts.vendas.domain.entities import (
     FormaPagamento,
@@ -465,3 +469,117 @@ def test_registro_manual_nao_aceita_origem_vitrine() -> None:
 
     # O schema do registro manual continua aceitando os canais já existentes.
     assert CriarPedidoRequest.model_fields["origem_canal"].default == OrigemCanalPedido.PDV
+
+
+# ── Venda no PDV respeita reservas da vitrine ────────────────────────────
+
+
+async def _venda_pdv(amb: _Ambiente, variante: VarianteVenda, quantidade: int, agora: datetime):
+    """Venda de balcão: sem pagamento de vitrine, passa a porta de reservas."""
+    gateway_pedidos = amb.pedidos
+    return await CriarPedidoUseCase(
+        gateway_pedidos,
+        amb.catalogo,
+        amb.estoque,
+        amb.reservas,
+        relogio=lambda: agora,
+    ).executar(
+        cliente_id=None,
+        desconto=Decimal("0.00"),
+        observacao=None,
+        itens=[_ItemPdv(variante.id, quantidade)],
+        pagamentos=[PagamentoInput(FormaPagamento.DINHEIRO, variante.preco_venda * quantidade)],
+        usuario_id=USUARIO,
+    )
+
+
+@dataclass(frozen=True)
+class _ItemPdv:
+    variante_id: UUID
+    quantidade: int
+    desconto_item: Decimal = Decimal("0.00")
+
+
+async def test_pdv_nao_vende_unidades_reservadas_pela_vitrine() -> None:
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 5))
+    await _checkout(amb, (variante, 3))
+
+    with pytest.raises(EstoqueInsuficiente, match="restam 2"):
+        await _venda_pdv(amb, variante, 3, AGORA)
+    assert amb.estoque.saidas == []  # nada foi baixado
+
+
+async def test_pdv_vende_o_que_nao_esta_reservado() -> None:
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 5))
+    await _checkout(amb, (variante, 3))
+
+    await _venda_pdv(amb, variante, 2, AGORA)
+
+    assert amb.estoque.saidas == [(variante.id, 2)]
+
+
+async def test_pdv_volta_a_vender_quando_a_reserva_vence() -> None:
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 5))
+    await _checkout(amb, (variante, 5), agora=AGORA - PRAZO_RESERVA_PADRAO - timedelta(minutes=1))
+
+    await _venda_pdv(amb, variante, 5, AGORA)
+
+    assert amb.estoque.saidas == [(variante.id, 5)]
+
+
+async def test_venda_sem_porta_de_reservas_mantem_o_comportamento_antigo() -> None:
+    """O worker da Nuvemshop não informa reservas: venda já paga não é recusada."""
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 5))
+    await _checkout(amb, (variante, 5))
+
+    await CriarPedidoUseCase(amb.pedidos, amb.catalogo, amb.estoque).executar(
+        cliente_id=None,
+        desconto=Decimal("0.00"),
+        observacao=None,
+        itens=[_ItemPdv(variante.id, 5)],
+        pagamentos=[PagamentoInput(FormaPagamento.DINHEIRO, Decimal("500.00"))],
+        usuario_id=USUARIO,
+    )
+
+    assert amb.estoque.saidas == [(variante.id, 5)]
+
+
+# ── Job de expiração ─────────────────────────────────────────────────────
+
+
+async def test_job_expira_so_pedidos_com_reserva_vencida() -> None:
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 10))
+    # Cada checkout executa expiração preguiçosa no próprio instante, então o
+    # cenário é montado no tempo: o vencido nasce, e o vigente nasce uma hora
+    # depois, quando o vencido ainda estava válido. Só então o job roda, em
+    # AGORA, e precisa ser ele quem cancela o vencido.
+    vencido = await _checkout(
+        amb, (variante, 2), agora=AGORA - PRAZO_RESERVA_PADRAO - timedelta(minutes=1)
+    )
+    vigente = await _checkout(amb, (variante, 3), agora=AGORA - timedelta(hours=1))
+
+    cancelados = await ExpirarReservasVencidasUseCase(amb.pedidos, amb.reservas).executar(
+        agora=AGORA
+    )
+
+    assert cancelados == 1
+    assert amb.pedidos.pedidos[vencido.id].status == StatusPedido.CANCELADO
+    assert amb.pedidos.pedidos[vigente.id].status == StatusPedido.PENDENTE
+    assert amb.estoque.saidas == []  # expirar nunca baixa estoque
+
+
+async def test_job_e_idempotente() -> None:
+    variante = _variante("100.00")
+    amb = _ambiente((variante, 10))
+    await _checkout(amb, (variante, 1), agora=AGORA - PRAZO_RESERVA_PADRAO - timedelta(minutes=1))
+    job = ExpirarReservasVencidasUseCase(amb.pedidos, amb.reservas)
+
+    await job.executar(agora=AGORA)
+    segunda = await job.executar(agora=AGORA)
+
+    assert segunda == 0

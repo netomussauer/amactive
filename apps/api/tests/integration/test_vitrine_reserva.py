@@ -13,14 +13,18 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from amactive.contexts.identidade.infrastructure.persistence.models import UsuarioModel
-from amactive.contexts.vendas.application.dto import PagamentoInput
+from amactive.contexts.vendas.application.dto import ItemPedidoInput, PagamentoInput
 from amactive.contexts.vendas.application.use_cases.confirmar_pagamento_vitrine import (
     ConfirmarPagamentoVitrineUseCase,
 )
+from amactive.contexts.vendas.application.use_cases.criar_pedido import CriarPedidoUseCase
 from amactive.contexts.vendas.application.use_cases.criar_pedido_vitrine import (
     PRAZO_RESERVA_PADRAO,
     CriarPedidoVitrineUseCase,
     ItemVitrineInput,
+)
+from amactive.contexts.vendas.application.use_cases.expirar_reservas_vencidas import (
+    ExpirarReservasVencidasUseCase,
 )
 from amactive.contexts.vendas.domain.entities import FormaPagamento, StatusPedido
 from amactive.contexts.vendas.infrastructure.persistence.gateways import (
@@ -32,6 +36,7 @@ from amactive.contexts.vendas.infrastructure.persistence.repositories import (
     SqlAlchemyReservaEstoqueRepository,
 )
 from amactive.contexts.vitrine.infrastructure.persistence import consultas
+from amactive.shared_kernel.exceptions import EstoqueInsuficiente
 
 pytestmark = pytest.mark.integration
 
@@ -155,3 +160,54 @@ async def test_produto_inativo_some_da_vitrine(
     assert total == 0
     assert produtos == []
     assert variante.id is not None
+
+
+async def _venda_pdv_real(session: AsyncSession, variante_id, quantidade: int, usuario_id, agora):
+    gateway = CatalogoEstoqueGateway(session)
+    return await CriarPedidoUseCase(
+        SqlAlchemyPedidoRepository(session),
+        gateway,
+        gateway,
+        SqlAlchemyReservaEstoqueRepository(session),
+        relogio=lambda: agora,
+    ).executar(
+        cliente_id=None,
+        desconto=Decimal("0.00"),
+        observacao=None,
+        itens=[
+            ItemPedidoInput(
+                variante_id=variante_id, quantidade=quantidade, desconto_item=Decimal(0)
+            )
+        ],
+        pagamentos=[PagamentoInput(FormaPagamento.DINHEIRO, Decimal("100.00") * quantidade)],
+        usuario_id=usuario_id,
+    )
+
+
+async def test_pdv_real_nao_vende_reservado_e_volta_a_vender_apos_expirar(
+    db_session: AsyncSession,
+    usuario_teste: UsuarioModel,
+    criar_variante_com_estoque,
+) -> None:
+    variante = await criar_variante_com_estoque(quantidade_inicial=5, preco_venda="100.00")
+    agora = datetime.now(UTC)
+    await _checkout(db_session, variante.id, 4, agora)  # loja reserva 4 de 5
+
+    # Balcão quer 2, mas só 1 está livre: recusado pelo PDV, sem baixa.
+    with pytest.raises(EstoqueInsuficiente):
+        await _venda_pdv_real(db_session, variante.id, 2, usuario_teste.id, agora)
+    gateway = CatalogoEstoqueGateway(db_session)
+    assert await gateway.saldo_bloqueado(variante.id) == 5
+
+    # Balcão vende a unidade livre normalmente.
+    await _venda_pdv_real(db_session, variante.id, 1, usuario_teste.id, agora)
+    assert await gateway.saldo_bloqueado(variante.id) == 4
+
+    # Passado o prazo, o job devolve a reserva; o estoque livre volta a ser 4 - 0.
+    depois = agora + PRAZO_RESERVA_PADRAO + timedelta(minutes=1)
+    cancelados = await ExpirarReservasVencidasUseCase(
+        SqlAlchemyPedidoRepository(db_session), SqlAlchemyReservaEstoqueRepository(db_session)
+    ).executar(agora=depois)
+    assert cancelados == 1
+    await _venda_pdv_real(db_session, variante.id, 4, usuario_teste.id, depois)
+    assert await gateway.saldo_bloqueado(variante.id) == 0

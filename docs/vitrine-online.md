@@ -33,6 +33,18 @@ Vitrine pública para o cliente final escolher peças, reservar e enviar o pedid
 - A baixa continua passando só por `movimentacao_estoque` (o trigger aplica o delta). Nunca há `UPDATE` direto em `estoque`.
 - **Expiração preguiçosa:** antes de cada checkout, pedidos com reserva vencida são cancelados e suas reservas removidas. Uma reserva vencida também deixa de contar na disponibilidade imediatamente. Confirmar um pedido com reserva vencida é recusado (`ReservaVencida`).
 
+### Expiração de reservas
+
+- Job `expirar-reservas` (`python -m amactive.scripts.expirar_reservas`), executado como CronJob do Kubernetes a cada 5 minutos (`infra/k8s/api/expirar-reservas-cronjob.yaml`). Cancela os pedidos PENDENTES com reserva vencida e remove as reservas. Nunca baixa estoque. Não depende do worker nem da integração com a Nuvemshop.
+- O job usa `concurrencyPolicy: Forbid`, então duas execuções não rodam ao mesmo tempo.
+- Além do job, cada checkout também expira as reservas vencidas antes de criar o pedido. Isso cobre o caso de o job estar atrasado.
+
+### Venda no balcão (PDV) respeita reservas
+
+- O PDV só pode vender o saldo **não reservado**: `saldo − reservas vigentes`. A checagem trava a linha de `estoque` (`FOR UPDATE`) antes de contar, então não há corrida com um checkout da vitrine.
+- Se a venda pedir mais que o disponível, o PDV recusa com "estoque insuficiente" e informa quantas unidades estão reservadas pela loja online. Nada é baixado.
+- Depois que a reserva vence, o balcão volta a vender essas unidades normalmente.
+
 ## 4. Contrato da API
 
 Público (sem JWT), prefixo `/loja`:
@@ -88,8 +100,7 @@ Ciclo up → down → up verificado em banco descartável.
 
 ## 9. Limitações conhecidas (aceitas nesta fase)
 
-- **Venda no balcão (PDV) não respeita reservas.** O PDV baixa do saldo físico. Se vender unidades reservadas, a confirmação da vitrine falha com "estoque insuficiente" e a equipe precisa cancelar o pedido da loja. Corrigir exige o PDV checar `saldo − reservas`.
-- **Expiração sem job agendado.** Pedidos vencidos só são cancelados no próximo checkout. Na lista administrativa podem aparecer como PENDENTE por mais tempo. Recomendado: job periódico no worker (fase F4).
+- **Venda da Nuvemshop não respeita reservas.** Vendas já pagas no canal externo não são recusadas por causa de reserva da loja (decisão deliberada). Se houver conflito, a confirmação da vitrine falha por estoque insuficiente e a equipe cancela o pedido da loja. Caso isso passe a acontecer na prática, revisitar com o canal reativado.
 - **Cliente deduplicado por telefone sem restrição de unicidade no banco.** Duas requisições simultâneas do mesmo número podem criar dois cadastros. Efeito limitado (cadastro duplicado, não estoque).
 - **Confirmação com um único pagamento** (valor total, uma forma). Pagamento misto na vitrine fica para depois.
 - **Carrinho local com preço visto.** O total exibido pode diferir do cobrado se o preço mudar; o backend recalcula e a mensagem de WhatsApp usa o valor do próprio pedido criado.

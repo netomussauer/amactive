@@ -1,0 +1,98 @@
+# CronJob que expira as reservas de estoque da vitrine (ver
+# apps/api/src/amactive/scripts/expirar_reservas.py e docs/vitrine-online.md §3).
+#
+# Cancela os pedidos PENDENTES cuja reserva venceu e devolve as peças à
+# disponibilidade. Roda a cada 5 minutos. É independente da integração com a
+# Nuvemshop: não depende do worker, que exige credencial daquele canal.
+#
+# Mesma imagem e mesmos segredos do Deployment amactive-api, para que o job
+# enxergue exatamente o mesmo banco e o mesmo código. Não monta migrations nem
+# uploads, porque o job só mexe em linhas do banco.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: amactive-expirar-reservas
+  namespace: amactive
+  labels:
+    app.kubernetes.io/name: "amactive-expirar-reservas"
+    app.kubernetes.io/component: "job"
+    app.kubernetes.io/managed-by: "argocd"
+    environment: "dev"
+    lab_id: "lab-k8s-01"
+    lab_owner: "jose.mussauer"
+spec:
+  schedule: "*/5 * * * *"
+  # Duas execuções simultâneas poderiam cancelar o mesmo pedido em paralelo.
+  # Forbid pula a nova execução enquanto a anterior não termina.
+  concurrencyPolicy: Forbid
+  # Se o cluster ficar ocupado e perder a janela, ainda roda em até 2 min.
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: "amactive-expirar-reservas"
+            app.kubernetes.io/component: "job"
+            environment: "dev"
+            lab_id: "lab-k8s-01"
+            lab_owner: "jose.mussauer"
+        spec:
+          restartPolicy: Never
+          nodeSelector:
+            workload: cicd
+          imagePullSecrets:
+            - name: harbor-pull-secret
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: expirar-reservas
+              image: harbor.lab.local/amactive/api:latest
+              imagePullPolicy: Always
+              command: ["python", "-m", "amactive.scripts.expirar_reservas"]
+              env:
+                - name: PG_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: amactive-secrets
+                      key: pg-password
+                - name: DATABASE_URL
+                  value: "postgresql+asyncpg://amactive:$(PG_PASSWORD)@postgresql.shared-infra.svc.cluster.local:5432/amactive"
+                - name: JWT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: amactive-secrets
+                      key: jwt-secret
+                - name: CREDENCIAL_CANAL_ENCRYPTION_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: amactive-secrets
+                      key: credencial-canal-encryption-key
+                - name: ENVIRONMENT
+                  value: "production"
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "96Mi"
+                limits:
+                  cpu: "200m"
+                  memory: "192Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+          volumes:
+            - name: tmp
+              emptyDir: {}

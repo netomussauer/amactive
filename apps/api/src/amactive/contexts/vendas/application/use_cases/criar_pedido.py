@@ -17,6 +17,7 @@ Concorrência — Baixa de Estoque e docs/openapi.yaml `POST /pedidos`):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -27,7 +28,13 @@ from amactive.contexts.vendas.domain.exceptions import (
     PagamentosNaoConferem,
     VarianteDeVendaInvalida,
 )
-from amactive.contexts.vendas.domain.repositories import CatalogoPort, EstoquePort, PedidoRepository
+from amactive.contexts.vendas.domain.repositories import (
+    CatalogoPort,
+    EstoquePort,
+    PedidoRepository,
+    ReservaEstoquePort,
+)
+from amactive.shared_kernel.exceptions import EstoqueInsuficiente
 
 
 class CriarPedidoUseCase:
@@ -36,10 +43,18 @@ class CriarPedidoUseCase:
         pedido_repository: PedidoRepository,
         catalogo_port: CatalogoPort,
         estoque_port: EstoquePort,
+        # Opcional. Quando informado (PDV), a venda só pode usar o saldo NÃO
+        # reservado pela vitrine (saldo − reservas vigentes). O worker da
+        # Nuvemshop não informa: venda já paga no canal externo não é recusada
+        # por causa de uma reserva da loja.
+        reserva_port: ReservaEstoquePort | None = None,
+        relogio: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._pedidos = pedido_repository
         self._catalogo = catalogo_port
         self._estoque = estoque_port
+        self._reservas = reserva_port
+        self._relogio = relogio
 
     async def executar(
         self,
@@ -115,6 +130,8 @@ class CriarPedidoUseCase:
 
         # Ordenação determinística por variante_id — ver docstring do módulo.
         for item_processado in sorted(itens_processados, key=lambda i: str(i["variante_id"])):
+            if self._reservas is not None:
+                await self._garantir_disponivel_sem_reserva(item_processado)
             await self._estoque.registrar_saida_venda(
                 variante_id=item_processado["variante_id"],
                 quantidade=item_processado["quantidade"],
@@ -123,3 +140,18 @@ class CriarPedidoUseCase:
             )
 
         return pedido
+
+    async def _garantir_disponivel_sem_reserva(self, item: dict) -> None:
+        """Trava a linha de estoque (FOR UPDATE, serializa com a vitrine) e
+        confere que a quantidade pedida cabe no saldo não reservado."""
+        assert self._reservas is not None  # garantido pelo chamador
+        saldo = await self._estoque.saldo_bloqueado(item["variante_id"])
+        reservado = await self._reservas.quantidade_reservada_ativa(
+            item["variante_id"], agora=self._relogio()
+        )
+        disponivel = saldo - reservado
+        if item["quantidade"] > disponivel:
+            raise EstoqueInsuficiente(
+                f"Variante {item['sku']}: restam {max(disponivel, 0)} unidade(s) disponível(is) "
+                f"para venda — {reservado} unidade(s) estão reservadas pela loja online."
+            )

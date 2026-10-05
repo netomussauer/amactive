@@ -29,6 +29,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+from amactive.contexts.vendas.application.use_cases.expirar_reservas_vencidas import (
+    ExpirarReservasVencidasUseCase,
+)
 from amactive.contexts.vendas.domain.entities import OrigemCanalPedido, Pedido, StatusPedido
 from amactive.contexts.vendas.domain.exceptions import (
     ItensVitrineInvalidos,
@@ -162,11 +165,9 @@ class CriarPedidoVitrineUseCase:
         return pedido
 
     async def _cancelar_reservas_vencidas(self, agora: datetime) -> None:
-        for pedido_id in await self._reservas.pedidos_com_reserva_vencida(agora=agora):
-            await self._reservas.liberar_do_pedido(pedido_id)
-            await self._pedidos.atualizar_status(
-                pedido_id, status=StatusPedido.CANCELADO, timestamp=agora
-            )
+        # Expiração preguiçosa (ver ExpirarReservasVencidasUseCase): garante que
+        # o checkout não espere o job periódico.
+        await ExpirarReservasVencidasUseCase(self._pedidos, self._reservas).executar(agora=agora)
 
 
 def _normalizar_telefone(telefone: str) -> str:
