@@ -43,7 +43,7 @@ export function HeroBanner() {
         height={HERO_MODELO.altura}
         alt="Modelo praticando corrida, vestindo a coleção AMACTIVE"
         fetchPriority="high"
-        className="block h-auto w-full md:absolute md:right-0 md:top-0 md:h-full md:w-auto"
+        className="block h-auto w-full md:absolute md:right-0 md:top-0 md:h-full md:w-auto md:[mask-image:linear-gradient(to_right,transparent_0%,black_22%)] md:[-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_22%)]"
       />
 
       {/* Degradê de leitura: vertical no celular, da esquerda no desktop. */}
@@ -57,7 +57,7 @@ export function HeroBanner() {
         <img
           src="/brand/amactive-logo-white.png"
           alt="AMACTIVE"
-          className="h-14 w-auto self-start md:h-16"
+          className="h-14 w-auto self-start md:h-24"
         />
 
         <div className="flex flex-col gap-4">
@@ -77,10 +77,10 @@ export function HeroBanner() {
           </a>
         </div>
 
-        <ul className="grid grid-cols-2 gap-4 text-xs text-blue-100">
+        <ul className="grid grid-cols-2 gap-4 text-sm text-blue-100">
           {BENEFICIOS.map(({ icone: Icone, texto }) => (
             <li key={texto} className="flex items-center gap-2">
-              <Icone className="h-5 w-5 shrink-0 text-blue-200" aria-hidden="true" />
+              <Icone className="h-6 w-6 shrink-0 text-blue-200" aria-hidden="true" />
               <span>{texto}</span>
             </li>
           ))}
