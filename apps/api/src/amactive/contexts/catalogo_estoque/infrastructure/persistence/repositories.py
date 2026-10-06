@@ -198,7 +198,13 @@ class SqlAlchemyVarianteRepository:
         for chave, valor in campos.items():
             if valor is not None:
                 setattr(modelo, chave, valor)
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            # Único campo com restrição de unicidade nesta tabela é o SKU.
+            await self._session.rollback()
+            novo_sku = campos.get("sku")
+            raise SkuDuplicado(f"SKU '{novo_sku}' já está em uso por outra variante.") from exc
         return _variante_para_entidade(modelo)
 
     async def inativar(self, variante_id: UUID) -> bool:

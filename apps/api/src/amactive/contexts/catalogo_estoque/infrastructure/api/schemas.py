@@ -95,6 +95,10 @@ class CriarVarianteRequest(BaseModel):
 
 
 class AtualizarVarianteRequest(BaseModel):
+    # SKU e tamanho podem ser corrigidos (ex.: código digitado errado). O estoque
+    # NÃO entra aqui: reposição é movimentação de entrada, para manter o histórico.
+    sku: str | None = Field(default=None, min_length=1, max_length=50)
+    tamanho: str | None = Field(default=None, min_length=1, max_length=10)
     cor: str | None = None
     preco_venda: str | None = Field(default=None, pattern=r"^\d+\.\d{2}$")
     preco_custo: str | None = Field(default=None, pattern=r"^\d+\.\d{2}$")

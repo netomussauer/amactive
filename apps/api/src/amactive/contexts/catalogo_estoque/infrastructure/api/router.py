@@ -84,6 +84,7 @@ from amactive.contexts.catalogo_estoque.infrastructure.storage import (
 )
 from amactive.core.security import CurrentUser, get_current_user, requer_papel
 from amactive.shared_kernel.database import get_db_session
+from amactive.shared_kernel.exceptions import ErroDeValidacao
 from amactive.shared_kernel.money import aplicar_desconto_percentual, parse_money, to_money_str
 from amactive.shared_kernel.schemas import Pagination
 
@@ -316,6 +317,13 @@ async def atualizar_variante(
     session: AsyncSession = Depends(get_db_session),
 ) -> VarianteResponse:
     campos: dict[str, object] = {"cor": payload.cor, "ativo": payload.ativo}
+    if payload.sku is not None:
+        sku = payload.sku.strip()
+        if not sku:
+            raise ErroDeValidacao("O SKU não pode ser vazio.")
+        campos["sku"] = sku
+    if payload.tamanho is not None:
+        campos["tamanho"] = payload.tamanho.strip()
     if payload.preco_venda is not None:
         campos["preco_venda"] = parse_money(payload.preco_venda)
     if payload.preco_custo is not None:
