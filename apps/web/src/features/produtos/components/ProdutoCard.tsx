@@ -13,7 +13,7 @@ export function ProdutoCard({ produto }: Props) {
         <div>
           <h2 className="font-sans text-xl font-semibold text-text">{produto.nome}</h2>
           <p className="mt-1 text-sm text-text-muted">{produto.marca}</p>
-          {produto.descricao && <p className="mt-2 text-sm text-text">{produto.descricao}</p>}
+          {produto.descricao && <p className="mt-2 whitespace-pre-line text-sm text-text">{produto.descricao}</p>}
         </div>
         <Badge tone={produto.ativo ? 'ok' : 'neutral'}>{produto.ativo ? 'Ativo' : 'Inativo'}</Badge>
       </div>

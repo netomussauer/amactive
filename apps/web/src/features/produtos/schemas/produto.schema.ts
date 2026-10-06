@@ -66,6 +66,8 @@ export const CriarVarianteSchema = z.object({
 export type CriarVarianteDTO = z.infer<typeof CriarVarianteSchema>
 
 export const AtualizarVarianteSchema = z.object({
+  sku: z.string().trim().min(1, 'Informe o SKU').max(50, 'Use no máximo 50 caracteres').optional(),
+  tamanho: TamanhoSchema.optional(),
   cor: z.string().max(50).optional(),
   preco_venda: decimalString.optional(),
   preco_custo: decimalString.nullable().optional(),

@@ -176,7 +176,9 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
               descontoPercentual={produto.desconto_percentual}
             />
           )}
-          {produto.descricao && <p className="text-sm text-text-muted">{produto.descricao}</p>}
+          {produto.descricao && (
+            <p className="whitespace-pre-line text-sm text-text-muted">{produto.descricao}</p>
+          )}
         </div>
 
         {coresDisponiveis.length > 1 && (

@@ -20,6 +20,8 @@ import { useProduto } from '../hooks/useProduto'
 import { useAtualizarProduto } from '../hooks/useAtualizarProduto'
 import { useCriarVariante } from '../hooks/useCriarVariante'
 import { useInativarVariante } from '../hooks/useInativarVariante'
+import { useAtualizarVariante } from '../hooks/useAtualizarVariante'
+import { EditarVarianteForm, type VarianteEditavel } from '../components/EditarVarianteForm'
 import { CADASTRO_PRODUTO_STEPS } from '../lib/cadastro-produto-steps'
 
 type LocationState = { fromCadastro?: boolean } | null | undefined
@@ -31,6 +33,8 @@ export function ProdutoDetalhePage() {
   const { podeGerenciarCatalogo } = usePermissoes()
   const [isEditing, setIsEditing] = useState(false)
   const [isVarianteModalOpen, setIsVarianteModalOpen] = useState(false)
+  // Guarda o id: o SKU pode mudar durante a edição, então não serve como chave.
+  const [varianteEmEdicao, setVarianteEmEdicao] = useState<(VarianteEditavel & { id: string }) | null>(null)
 
   // O Stepper (passo 3, "Imagens") só aparece aqui quando o usuário chega
   // vindo do fluxo de criação de produto (ProdutoNovoPage passa esse state
@@ -41,6 +45,7 @@ export function ProdutoDetalhePage() {
   const { mutate: atualizarProduto, isPending: isUpdating } = useAtualizarProduto(produtoId ?? '')
   const { mutate: criarVariante, isPending: isCreatingVariante } = useCriarVariante(produtoId ?? '')
   const { mutate: inativarVariante } = useInativarVariante(produtoId ?? '')
+  const { mutate: atualizarVariante, isPending: isUpdatingVariante } = useAtualizarVariante(produtoId ?? '')
 
   if (isLoading) {
     return (
@@ -146,6 +151,11 @@ export function ProdutoDetalhePage() {
                       <Badge tone={variante.ativo ? 'ok' : 'neutral'}>{variante.ativo ? 'Ativa' : 'Inativa'}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
+                      {podeGerenciarCatalogo && (
+                        <Button variant="ghost" size="sm" onClick={() => setVarianteEmEdicao(variante)}>
+                          Editar
+                        </Button>
+                      )}
                       {variante.ativo && podeGerenciarCatalogo && (
                         <Button
                           variant="ghost"
@@ -187,6 +197,26 @@ export function ProdutoDetalhePage() {
             isSubmitting={isCreatingVariante}
             onSubmit={(values) =>
               criarVariante(values, { onSuccess: () => setIsVarianteModalOpen(false) })
+            }
+          />
+        </Modal>
+      )}
+
+      {podeGerenciarCatalogo && varianteEmEdicao && (
+        <Modal
+          open
+          onClose={() => setVarianteEmEdicao(null)}
+          title={`Editar variante ${varianteEmEdicao.sku}`}
+        >
+          <EditarVarianteForm
+            variante={varianteEmEdicao}
+            isSubmitting={isUpdatingVariante}
+            onCancel={() => setVarianteEmEdicao(null)}
+            onSubmit={(payload) =>
+              atualizarVariante(
+                { varianteId: varianteEmEdicao.id, payload },
+                { onSuccess: () => setVarianteEmEdicao(null) },
+              )
             }
           />
         </Modal>
