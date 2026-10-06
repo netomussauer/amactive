@@ -104,7 +104,7 @@ spec:
       # alcançando o token service do Harbor (mesmo achado documentado nos
       # pipelines do amfit em 2026-09-08).
       retries: 2
-      timeout: "8m"
+      timeout: "8m0s"
       taskRef:
         kind: Task
         name: amactive-kaniko-build-push

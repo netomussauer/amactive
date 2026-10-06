@@ -104,6 +104,9 @@ spec:
         annotations:
           gitea.io/pusher: "$(tt.params.pusher)"
           gitea.io/ref: "$(tt.params.git-ref)"
+          # Execução de CI é histórico, não estado desejado: o ArgoCD não deve
+          # acusar "OutOfSync" nem apagar essas execuções.
+          argocd.argoproj.io/compare-options: IgnoreExtraneous
         labels:
           app.kubernetes.io/component: "pipelinerun-api"
           app.kubernetes.io/managed-by: "argocd"
@@ -183,6 +186,8 @@ spec:
         annotations:
           gitea.io/pusher: "$(tt.params.pusher)"
           gitea.io/ref: "$(tt.params.git-ref)"
+          # Execução de CI é histórico, não estado desejado (ver o template da API).
+          argocd.argoproj.io/compare-options: IgnoreExtraneous
         labels:
           app.kubernetes.io/component: "pipelinerun-web"
           app.kubernetes.io/managed-by: "argocd"

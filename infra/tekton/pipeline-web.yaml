@@ -86,7 +86,7 @@ spec:
 
     - name: node-test
       runAfter: ["git-clone"]
-      timeout: "10m"
+      timeout: "10m0s"
       taskRef:
         kind: Task
         name: node-test
@@ -103,7 +103,7 @@ spec:
       # pesado que o da API — mesmo racional de orçamento do
       # amfit-build-web.
       retries: 1
-      timeout: "15m"
+      timeout: "15m0s"
       taskRef:
         kind: Task
         name: amactive-kaniko-build-push
@@ -149,7 +149,7 @@ spec:
     - name: kaniko-build-push-loja
       runAfter: ["rollout-restart"]
       retries: 1
-      timeout: "15m"
+      timeout: "15m0s"
       taskRef:
         kind: Task
         name: amactive-kaniko-build-push
