@@ -37,5 +37,9 @@ export default defineConfig({
     globals: false,
     css: true,
     setupFiles: ['./src/shared/test-utils/setup.ts'],
+    // O padrão de 5s é curto para a etapa de testes no cluster (CPU limitada no nó
+    // cicd). 15s ainda falha um teste que trava de verdade, só que com folga para
+    // a lentidão do ambiente.
+    testTimeout: 15000,
   },
 })
