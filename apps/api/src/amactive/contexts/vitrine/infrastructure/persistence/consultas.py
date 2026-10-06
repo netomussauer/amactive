@@ -323,7 +323,8 @@ async def listar_opcoes_filtro(session: AsyncSession) -> OpcoesFiltro:
     linhas = (await session.execute(base)).all()
     cores = sorted({cor for cor, _ in linhas})
     # Tamanhos: letras primeiro na ordem P, M, G, GG e depois numéricos (38, 40...).
-    ordem_letras = {"PP": 0, "P": 1, "M": 2, "G": 3, "GG": 4, "XG": 5}
+    # "Único" primeiro: é a opção de tamanho de peça sem grade (ver o admin).
+    ordem_letras = {"Único": -1, "PP": 0, "P": 1, "M": 2, "G": 3, "GG": 4, "XG": 5}
     tamanhos = sorted(
         {tamanho for _, tamanho in linhas},
         key=lambda t: (0, ordem_letras[t], "") if t in ordem_letras else (1, 0, t.zfill(4)),

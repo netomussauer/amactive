@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -18,10 +19,16 @@ from amactive.contexts.catalogo_estoque.domain.repositories import (
 )
 
 
+def _sem_acentos(texto: str) -> str:
+    """'Único' -> 'Unico'. Sem isso, a regex abaixo apagaria a letra acentuada
+    e o tamanho 'Único' viraria 'NICO' no SKU."""
+    return unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+
+
 def gerar_sku(*, tamanho: str, cor: str) -> str:
     """Gera um SKU legível e praticamente único quando o cliente não informa um."""
-    cor_slug = re.sub(r"[^A-Z0-9]+", "", cor.upper())[:6] or "COR"
-    tamanho_slug = re.sub(r"[^A-Z0-9]+", "", tamanho.upper())[:4] or "UN"
+    cor_slug = re.sub(r"[^A-Z0-9]+", "", _sem_acentos(cor).upper())[:6] or "COR"
+    tamanho_slug = re.sub(r"[^A-Z0-9]+", "", _sem_acentos(tamanho).upper())[:4] or "UN"
     return f"SKU-{tamanho_slug}-{cor_slug}-{uuid4().hex[:6].upper()}"
 
 
