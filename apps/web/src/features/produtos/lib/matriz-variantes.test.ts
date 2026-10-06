@@ -124,7 +124,7 @@ describe('atualizarCombo', () => {
 })
 
 describe('TAMANHOS_SUGERIDOS', () => {
-  it('cobre PP/P/M/G/GG', () => {
-    expect(TAMANHOS_SUGERIDOS).toEqual(['PP', 'P', 'M', 'G', 'GG'])
+  it('cobre Único e PP/P/M/G/GG', () => {
+    expect(TAMANHOS_SUGERIDOS).toEqual(['Único', 'PP', 'P', 'M', 'G', 'GG'])
   })
 })

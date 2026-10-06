@@ -107,7 +107,7 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
         <ol className="flex flex-wrap items-center gap-2">
           <li>
             <Link to="/" className="hover:text-text">
-              Coleção
+              Categorias
             </Link>
           </li>
           {produto.categoria && (
@@ -134,7 +134,7 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
             <img
               src={getMediaUrl(imagemAtual.url)}
               alt={`${produto.nome} — ${cor}`}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-text-muted">
@@ -151,9 +151,9 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
                 onClick={() => setIndiceImagem(i)}
                 aria-pressed={i === indiceImagem}
                 aria-label={`Ver imagem ${i + 1}`}
-                className={`h-16 w-12 shrink-0 overflow-hidden rounded border ${i === indiceImagem ? 'border-primary' : 'border-border'}`}
+                className={`flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded border bg-bg-subtle p-0.5 ${i === indiceImagem ? 'border-primary' : 'border-border'}`}
               >
-                <img src={getMediaUrl(imagem.url)} alt="" className="h-full w-full object-cover" />
+                <img src={getMediaUrl(imagem.url)} alt="" className="h-full w-full object-contain" />
               </button>
             ))}
           </div>
@@ -182,18 +182,36 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
         {coresDisponiveis.length > 1 && (
           <fieldset className="flex flex-col gap-2">
             <legend className="text-sm font-medium">Cor: <span className="font-normal">{cor}</span></legend>
-            <div className="flex flex-wrap gap-2">
-              {coresDisponiveis.map((c) => (
-                <Button
-                  key={c}
-                  size="sm"
-                  variant={c === cor ? 'primary' : 'outline'}
-                  aria-pressed={c === cor}
-                  onClick={() => escolherCor(c)}
-                >
-                  {c}
-                </Button>
-              ))}
+            <div className="flex flex-wrap gap-3">
+              {coresDisponiveis.map((c) => {
+                // Miniatura da cor: a foto principal dela (ou a primeira que tiver).
+                const miniatura =
+                  produto.imagens.find((i) => i.cor === c && i.principal) ??
+                  produto.imagens.find((i) => i.cor === c)
+                const selecionada = c === cor
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => escolherCor(c)}
+                    aria-pressed={selecionada}
+                    aria-label={`Cor ${c}`}
+                    title={c}
+                    className="flex flex-col items-center gap-1 text-xs text-text-muted"
+                  >
+                    <span
+                      className={`flex h-14 w-10 items-center justify-center overflow-hidden rounded border bg-bg-subtle p-0.5 ${selecionada ? 'border-primary ring-1 ring-primary' : 'border-border'}`}
+                    >
+                      {miniatura ? (
+                        <img src={getMediaUrl(miniatura.url)} alt="" className="h-full w-full object-contain" />
+                      ) : (
+                        <span className="px-1 text-center text-[10px] leading-tight">{c}</span>
+                      )}
+                    </span>
+                    <span className={selecionada ? 'font-medium text-text' : undefined}>{c}</span>
+                  </button>
+                )
+              })}
             </div>
           </fieldset>
         )}

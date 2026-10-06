@@ -10,7 +10,8 @@
 // backend (docs/data-model.md decisão #8: `tamanho` é varchar(10) porque
 // tamanhos numéricos como "38"/"40" coexistem com PP/P/M/G/GG), mas cobre o
 // caso comum de moda fitness por letra.
-export const TAMANHOS_SUGERIDOS = ['PP', 'P', 'M', 'G', 'GG'] as const
+// 'Único' para peças sem grade de tamanho (ex.: acessórios, peças de tamanho livre).
+export const TAMANHOS_SUGERIDOS = ['Único', 'PP', 'P', 'M', 'G', 'GG'] as const
 
 export type ComboVarianteMatriz = {
   /** Chave estável cor+tamanho (normalizada), usada como key de lista e para merge ao regenerar. */

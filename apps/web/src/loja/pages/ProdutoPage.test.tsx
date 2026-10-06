@@ -50,7 +50,7 @@ describe('ProdutoPage — foto por cor', () => {
     const user = userEvent.setup()
     renderizar()
 
-    await user.click(screen.getByRole('button', { name: 'Azul' }))
+    await user.click(screen.getByRole('button', { name: 'Cor Azul' }))
 
     expect(screen.queryByRole('img', { name: /Legging Teste — Azul/ })).toBeNull()
     expect(screen.queryByRole('img', { name: /Legging Teste — Preto/ })).toBeNull()

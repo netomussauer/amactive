@@ -87,7 +87,7 @@ export function CatalogoPage() {
 
       <div id="colecao" className="flex scroll-mt-20 flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="font-sans text-2xl font-semibold text-text">Coleção</h1>
+          <h1 className="font-sans text-2xl font-semibold text-text">Categorias</h1>
           <div className="relative w-full sm:w-72">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
