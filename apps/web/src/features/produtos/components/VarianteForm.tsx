@@ -4,8 +4,8 @@ import { Button } from '@/shared/components/ui/Button'
 import { Input } from '@/shared/components/ui/Input'
 import { FormField } from '@/shared/components/ui/FormField'
 import { PaletaDeCores } from './PaletaDeCores'
+import { SeletorTamanho } from './SeletorTamanho'
 import { CriarVarianteSchema, type CriarVarianteDTO } from '../schemas/produto.schema'
-import { TAMANHOS_SUGERIDOS } from '../lib/matriz-variantes'
 
 type Props = {
   onSubmit: (values: CriarVarianteDTO) => void
@@ -33,19 +33,20 @@ export function VarianteForm({ onSubmit, isSubmitting }: Props) {
   return (
     <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="grid grid-cols-2 gap-4">
-        <FormField
-          label="Tamanho"
-          htmlFor="tamanho"
-          required
-          error={errors.tamanho?.message}
-          hint={`Sugestões: ${TAMANHOS_SUGERIDOS.join(', ')}`}
-        >
-          <Input id="tamanho" list="tamanhos-sugeridos" invalid={Boolean(errors.tamanho)} {...register('tamanho')} />
-          <datalist id="tamanhos-sugeridos">
-            {TAMANHOS_SUGERIDOS.map((tamanho) => (
-              <option key={tamanho} value={tamanho} />
-            ))}
-          </datalist>
+        <FormField label="Tamanho" htmlFor="variante-tamanho" required error={errors.tamanho?.message}>
+          <Controller
+            name="tamanho"
+            control={control}
+            render={({ field }) => (
+              <SeletorTamanho
+                idPrefix="variante-tamanho"
+                ariaLabel="Tamanho"
+                value={field.value}
+                onChange={field.onChange}
+                invalid={Boolean(errors.tamanho)}
+              />
+            )}
+          />
         </FormField>
 
         <FormField label="Cor" htmlFor="variante-cor" required error={errors.cor?.message}>

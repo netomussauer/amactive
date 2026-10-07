@@ -1,10 +1,10 @@
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/shared/components/ui/Button'
 import { Input } from '@/shared/components/ui/Input'
 import { FormField } from '@/shared/components/ui/FormField'
-import { TAMANHOS_SUGERIDOS } from '../lib/matriz-variantes'
+import { SeletorTamanho } from './SeletorTamanho'
 import type { AtualizarVarianteDTO } from '../schemas/produto.schema'
 
 // Edição de uma variante já cadastrada. O ESTOQUE NÃO ENTRA AQUI: reposição é
@@ -36,6 +36,7 @@ type Props = {
 export function EditarVarianteForm({ variante, isSubmitting, onSubmit, onCancel }: Props) {
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({
@@ -67,12 +68,19 @@ export function EditarVarianteForm({ variante, isSubmitting, onSubmit, onCancel 
       </FormField>
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Tamanho" htmlFor="editar-tamanho" required error={errors.tamanho?.message}>
-          <Input id="editar-tamanho" list="editar-tamanhos-sugeridos" invalid={Boolean(errors.tamanho)} {...register('tamanho')} />
-          <datalist id="editar-tamanhos-sugeridos">
-            {TAMANHOS_SUGERIDOS.map((tamanho) => (
-              <option key={tamanho} value={tamanho} />
-            ))}
-          </datalist>
+          <Controller
+            name="tamanho"
+            control={control}
+            render={({ field }) => (
+              <SeletorTamanho
+                idPrefix="editar-tamanho"
+                ariaLabel="Tamanho"
+                value={field.value}
+                onChange={field.onChange}
+                invalid={Boolean(errors.tamanho)}
+              />
+            )}
+          />
         </FormField>
         <FormField label="Cor" htmlFor="editar-cor" required error={errors.cor?.message}>
           <Input id="editar-cor" invalid={Boolean(errors.cor)} {...register('cor')} />
