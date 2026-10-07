@@ -23,6 +23,7 @@ from amactive.contexts.catalogo_estoque.domain.entities import (
     TipoMovimentacao,
 )
 from amactive.contexts.catalogo_estoque.domain.exceptions import (
+    CategoriaDuplicada,
     SaldoDeEstoqueInsuficiente,
     SkuDuplicado,
 )
@@ -58,7 +59,14 @@ class SqlAlchemyCategoriaRepository:
     async def criar(self, *, nome: str, slug: str) -> Categoria:
         modelo = CategoriaModel(id=uuid.uuid4(), nome=nome, slug=slug, ativo=True, criado_em=_now())
         self._session.add(modelo)
-        await self._session.flush()
+        try:
+            await self._session.flush()
+        except IntegrityError as exc:
+            # nome e slug são UNIQUE — mesmo padrão de SqlAlchemyVarianteRepository.criar.
+            await self._session.rollback()
+            raise CategoriaDuplicada(
+                f"Já existe uma categoria chamada '{nome}' (ou com um nome equivalente)."
+            ) from exc
         return _categoria_para_entidade(modelo)
 
 

@@ -25,6 +25,11 @@ class SkuDuplicado(ConflitoDeEstado):
     pass
 
 
+class CategoriaDuplicada(ConflitoDeEstado):
+    """Nome (ou o slug gerado a partir dele) já usado por outra categoria —
+    `categoria.nome` e `categoria.slug` são UNIQUE no banco."""
+
+
 class DadosDeMovimentacaoInvalidos(ErroDeValidacao):
     pass
 
