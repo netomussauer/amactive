@@ -143,7 +143,21 @@ export function ProdutoForm({ defaultValues, onSubmit, isSubmitting, submitLabel
           placeholder="Ex: 15"
           invalid={Boolean(errors.desconto_percentual)}
           {...register('desconto_percentual', {
-            setValueAs: (value: string) => (value === '' ? null : Number(value)),
+            // O valor recebido aqui nem sempre é a string lida do <input>: no
+            // primeiro submit de um formulário cujo campo nunca foi tocado,
+            // o react-hook-form chama setValueAs com o defaultValue bruto
+            // (aqui `null`, vindo de `useForm({ defaultValues })`), não com
+            // ref.value lido do DOM — só passa a ler a string do input depois
+            // dessa primeira passagem (ex: após o próprio onChange disparar).
+            // `Number(null)` é `0` em JS, não `NaN`/erro, então sem o check
+            // de null aqui o schema (`.gt(0)`) rejeitava toda primeira
+            // submissão sem o campo ter sido tocado — silenciosamente: o erro
+            // aparece só como um texto pequeno embaixo do campo, handleSubmit
+            // nunca chama onSubmit, e o clique seguinte (agora sim com a
+            // string "" vinda do DOM) passa e cria o produto — por isso o
+            // relato de "nada acontece no primeiro clique, e cliques
+            // repetidos criam produtos duplicados" (bug real, 2026-10-07).
+            setValueAs: (value: string | number | null) => (value === '' || value == null ? null : Number(value)),
           })}
         />
       </FormField>
