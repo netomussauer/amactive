@@ -312,7 +312,12 @@ function ProdutosRelacionados({
       <h2 id="relacionados-titulo" className="font-sans text-xl font-semibold text-text">
         Você também pode gostar
       </h2>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {/* Mesmos breakpoints das grades de CatalogoPage.tsx — ver comentário
+          lá (bug real, 2026-10-08: fotos pareciam ter altura diferente
+          entre seções porque cada grade tinha um número de colunas
+          diferente no mesmo breakpoint, e a foto do ProdutoCard escala com
+          a largura da coluna via aspect-[3/4]). */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
         {itens.map((produto) => (
           <ProdutoCard key={produto.id} produto={produto} />
         ))}

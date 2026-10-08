@@ -77,7 +77,13 @@ export function CatalogoPage() {
           <h2 id="destaques-titulo" className="font-sans text-xl font-semibold text-text">
             Em destaque
           </h2>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* Mesmos breakpoints da grade principal (linha ~199) e de
+              "Você também pode gostar" em ProdutoPage.tsx — o ProdutoCard usa
+              aspect-[3/4] na foto, então a altura dela escala com a largura
+              da coluna; grades com número de colunas diferente no mesmo
+              breakpoint faziam as fotos de uma seção parecerem maiores que
+              as da outra ao rolar a página (bug real, 2026-10-08). */}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
             {destaques.data.data.map((produto) => (
               <ProdutoCard key={produto.id} produto={produto} />
             ))}
