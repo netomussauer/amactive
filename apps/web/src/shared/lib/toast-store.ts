@@ -33,14 +33,28 @@ function gerarIdToast(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
+// Tempo até o toast sumir sozinho (bug real, 2026-10-10: nunca existiu
+// auto-dismiss aqui — `dismiss()` só era chamado pelo clique manual no X do
+// Toaster, então toasts ficavam empilhados na tela indefinidamente até o
+// usuário fechar um por um). Erro fica mais tempo (mensagem costuma ser mais
+// importante de ler) do que sucesso/info.
+const DURACAO_MS: Record<ToastVariant, number> = {
+  success: 4000,
+  info: 4000,
+  error: 6000,
+}
+
 // Estado global de toasts (feedback de erro/sucesso). Ver
 // docs/frontend-architecture.md — tratamento de erro global do item 1 do escopo.
 export const useToastStore = create<ToastState>((set) => ({
   toasts: [],
-  push: (variant, message) =>
-    set((state) => ({
-      toasts: [...state.toasts, { id: gerarIdToast(), variant, message }],
-    })),
+  push: (variant, message) => {
+    const id = gerarIdToast()
+    set((state) => ({ toasts: [...state.toasts, { id, variant, message }] }))
+    // Se o usuário já fechou manualmente antes do timer disparar, dismiss()
+    // com esse id vira um no-op (filter não acha nada pra remover).
+    setTimeout(() => useToastStore.getState().dismiss(id), DURACAO_MS[variant])
+  },
   dismiss: (id) =>
     set((state) => ({
       toasts: state.toasts.filter((t) => t.id !== id),

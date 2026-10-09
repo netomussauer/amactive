@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useToastStore } from './toast-store'
 
 describe('useToastStore', () => {
   afterEach(() => {
     useToastStore.setState({ toasts: [] })
+    vi.useRealTimers()
   })
 
   it('empilha um toast com id único', () => {
@@ -42,6 +43,58 @@ describe('useToastStore', () => {
     const [toast] = useToastStore.getState().toasts
     useToastStore.getState().dismiss(toast.id)
 
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('some sozinho depois de um tempo (bug real, 2026-10-10: nunca sumia, ficava empilhando)', () => {
+    vi.useFakeTimers()
+    useToastStore.getState().push('success', 'Adicionado ao carrinho')
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+
+    vi.advanceTimersByTime(3999)
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+
+    vi.advanceTimersByTime(1)
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('toast de erro fica visível por mais tempo que sucesso/info antes de sumir sozinho', () => {
+    vi.useFakeTimers()
+    useToastStore.getState().push('error', 'Falha ao salvar')
+
+    vi.advanceTimersByTime(4000)
+    expect(useToastStore.getState().toasts).toHaveLength(1)
+
+    vi.advanceTimersByTime(2000)
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('fechar manualmente antes do timer não quebra quando o timer dispara depois', () => {
+    vi.useFakeTimers()
+    useToastStore.getState().push('info', 'Aviso')
+    const [toast] = useToastStore.getState().toasts
+
+    useToastStore.getState().dismiss(toast.id)
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+
+    // O timer do push() ainda dispara mais tarde — dismiss() num id que já
+    // não existe mais é um no-op, não deve re-adicionar nem lançar erro.
+    expect(() => vi.advanceTimersByTime(4000)).not.toThrow()
+    expect(useToastStore.getState().toasts).toHaveLength(0)
+  })
+
+  it('cada toast tem seu próprio timer independente', () => {
+    vi.useFakeTimers()
+    useToastStore.getState().push('success', 'Primeiro')
+    vi.advanceTimersByTime(2000)
+    useToastStore.getState().push('success', 'Segundo')
+
+    // 2000ms depois do primeiro push (4000 total): só o primeiro já passou
+    // da sua duração de 4000ms, o segundo ainda tem 2000ms pela frente.
+    vi.advanceTimersByTime(2000)
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual(['Segundo'])
+
+    vi.advanceTimersByTime(2000)
     expect(useToastStore.getState().toasts).toHaveLength(0)
   })
 })
