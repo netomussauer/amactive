@@ -129,7 +129,11 @@ function DetalheProduto({ produto }: { produto: ProdutoDetalheLoja }) {
 
       <div className="grid gap-8 md:grid-cols-2">
       <div className="flex flex-col gap-3">
-        <div className="aspect-[3/4] overflow-hidden rounded-lg bg-bg-subtle">
+        {/* min-h-0 min-w-0: mesmo bug/motivo do ProdutoCard (ver comentário
+            lá) — sem isso, o min-height:auto implícito de item flex com
+            <img> deixa a foto principal "vazar" sua proporção natural em
+            vez de respeitar aspect-[3/4] quando a foto não é 3:4. */}
+        <div className="aspect-[3/4] min-h-0 min-w-0 overflow-hidden rounded-lg bg-bg-subtle">
           {imagemAtual ? (
             <img
               src={getMediaUrl(imagemAtual.url)}

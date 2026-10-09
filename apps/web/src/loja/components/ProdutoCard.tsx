@@ -14,7 +14,16 @@ export function ProdutoCard({ produto }: Props) {
       to={`/produtos/${produto.id}`}
       className="group flex flex-col overflow-hidden rounded-lg border border-border bg-bg transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
-      <div className="relative aspect-[3/4] bg-bg-subtle">
+      {/* min-h-0 min-w-0: sem isso, uma foto cuja proporção natural é mais
+          alta que 3:4 "vaza" através do mínimo implícito (min-height:auto)
+          de um item flex com conteúdo substituído (<img>), e a caixa cresce
+          para a proporção da FOTO em vez de respeitar aspect-[3/4] — o card
+          "Sem imagem" (sem <img>) sempre ficava correto, só os com foto real
+          variavam de altura entre si (bug real, 2026-10-09; reproduzido e
+          confirmado isoladamente antes do fix: com min-h-0/min-w-0, uma
+          imagem 855×1280 e um card sem imagem medem exatamente a mesma
+          altura; sem, a imagem "vazava" sua proporção natural). */}
+      <div className="relative aspect-[3/4] min-h-0 min-w-0 bg-bg-subtle">
         {produto.imagem_principal_url ? (
           <img
             src={getMediaUrl(produto.imagem_principal_url)}

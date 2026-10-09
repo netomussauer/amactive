@@ -46,6 +46,20 @@ describe('ProdutoPage — foto por cor', () => {
     expect(screen.getByRole('img', { name: /Legging Teste — Preto/ }).getAttribute('src')).toContain('/media/preto.jpg')
   })
 
+  it('a caixa da foto principal tem min-h-0 e min-w-0', () => {
+    // Bug real (2026-10-09, ver ProdutoCard.test.tsx) — min-h-0/min-w-0
+    // evitam que uma foto com proporção natural diferente de 3:4 "vaze"
+    // através do min-height:auto implícito de item flex, crescendo a
+    // caixa além do aspect-[3/4]. Reproduzido/confirmado com Chromium
+    // headless; jsdom não calcula layout CSS, então este teste só garante
+    // que as classes do fix continuam presentes.
+    renderizar()
+    const img = screen.getByRole('img', { name: /Legging Teste — Preto/ })
+    const caixa = img.closest('.aspect-\\[3\\/4\\]')
+    expect(caixa?.className).toContain('min-h-0')
+    expect(caixa?.className).toContain('min-w-0')
+  })
+
   it('ao escolher uma cor sem foto, não mostra a foto de outra cor', async () => {
     const user = userEvent.setup()
     renderizar()
