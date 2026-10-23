@@ -14,6 +14,15 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+# Side effect apenas: registra em Base.metadata as tabelas de todos os
+# contextos (incluindo `cadastros`/`cliente` e `identidade`/`usuario`, donos
+# das outras pontas das FKs de PedidoModel) antes de qualquer mapper ser
+# configurado. Sem isso, este script — que, diferente de main.py, nunca
+# importa os demais contextos — quebra com
+# sqlalchemy.exc.NoReferencedTableError na primeira query envolvendo
+# PedidoModel (bug real, achado no infra-lab 2026-10-23: o CronJob falhava
+# em TODA execução). Ver docstring de shared_kernel/all_models.py.
+import amactive.shared_kernel.all_models  # noqa: F401
 from amactive.contexts.vendas.application.use_cases.expirar_reservas_vencidas import (
     ExpirarReservasVencidasUseCase,
 )
